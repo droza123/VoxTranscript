@@ -17,6 +17,7 @@ import gc
 import os
 import sys
 import logging
+import traceback
 
 import numpy as np
 import torch
@@ -188,7 +189,7 @@ class Transcriber:
         self.progress_callback = None
         self.ffmpeg_path = get_ffmpeg()
         logging.info(f"Initialized Transcriber with FFMPEG path: {self.ffmpeg_path}")
-        self.device = self.config.device
+        self.device = self.get_device()
         self.faster_whisper_threads = 4
         self.model = None
         
@@ -461,6 +462,11 @@ class Transcriber:
 
                 return aligned_results
 
+    def get_device(self):
+        if isinstance(self.config.device, str):
+            return torch.device(self.config.device)
+        return self.config.device
+
     def diarize_transcriptions(self, transcriptions):
         with silent_subprocess():
             with gpu_memory_manager():
@@ -470,12 +476,17 @@ class Transcriber:
                 diarized_results = []
 
                 try:
+                    logging.info(f"Diarization started. Device: {self.device}, Type: {type(self.device)}")
+                    
                     with get_diarization_pipeline(
                         config_path=self.config.pyannote_config_path,
                         model_path=self.model_path,
                         device=self.device
                     ) as diarize_model:
+                        logging.info("Diarization pipeline created successfully")
+                        
                         for result, audio_path, language_info in transcriptions:
+                            logging.info(f"Processing audio: {audio_path}")
                             diarize_segments = diarize_model(
                                 audio_path,
                                 min_speakers=self.config.min_speakers,
@@ -483,11 +494,17 @@ class Transcriber:
                             )
                             result = assign_word_speakers(diarize_segments, result)
                             diarized_results.append((result, audio_path, language_info))
+                            logging.info(f"Diarization completed for {audio_path}")
+
                 except Exception as e:
                     logging.error(f"Error during diarization: {str(e)}")
+                    logging.error(f"Error type: {type(e)}")
+                    logging.error(f"Traceback: {traceback.format_exc()}")
+                    logging.error(f"Device at error: {self.device}, Type: {type(self.device)}")
                     # If diarization fails, return the original transcriptions
                     return transcriptions
 
+                logging.info("Diarization process completed successfully")
                 return diarized_results
 
     def write_transcriptions(self, transcriptions):

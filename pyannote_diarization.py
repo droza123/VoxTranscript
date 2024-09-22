@@ -52,7 +52,8 @@ class DiarizationPipeline:
 
     def unload_model(self):
         if self.model is not None:
-            self.model.to('cpu')
+            cpu_device = torch.device("cpu")
+            self.model.to(cpu_device)
             del self.model
             self.model = None
         torch.cuda.empty_cache()
