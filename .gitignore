@@ -3,9 +3,6 @@ __pycache__/
 *.py[cod]
 *.so
 
-# Model files
-# /models/*
-
 # Ignore everything in the models directory
 models/faster_whisper/*
 models/llama_tokenizer/*
