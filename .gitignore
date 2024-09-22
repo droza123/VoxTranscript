@@ -6,18 +6,20 @@ __pycache__/
 # Model files
 /models/*
 
-# Exceptions for empty directories and specific files
-!/models/.gitkeep
-!/models/faster_whisper/.gitkeep
-!/models/llama_tokenizer/.gitkeep
-!/models/pyannote/.gitkeep
-!/models/voice_activity_detection/.gitkeep
-!/models/wav2vec2_base/.gitkeep
-!/models/speechbrain_models/.gitkeep
+# Ignore everything in the models directory
+models/*
 
-# Allow specific configuration files if needed
-!/models/llama_tokenizer/tokenizer_config.json
-!/models/llama_tokenizer/special_tokens_map.json
+# But don't ignore the .gitkeep files in models and its subdirectories
+!models/.gitkeep
+!models/*/.gitkeep
+
+# Don't ignore specific configuration files
+!models/llama_tokenizer/tokenizer_config.json
+!models/llama_tokenizer/special_tokens_map.json
+
+# Ignore all other files in subdirectories
+models/*/*
+!models/llama_tokenizer/*
 
 # Virtual environment
 .venv/
