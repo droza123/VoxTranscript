@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4a90e2;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#5eb4ff;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="50" cy="50" r="48" fill="url(#grad)" />
+  
+  <!-- Speech bubble -->
+  <path d="M25 25 H75 A10 10 0 0 1 85 35 V60 A10 10 0 0 1 75 70 H40 L25 85 V25" fill="white" />
+  
+  <!-- Document symbol -->
+  <rect x="38" y="32" width="30" height="30" fill="#4a90e2" rx="2" />
+  <path d="M43 39 H63 M43 47 H58 M43 55 H53" stroke="white" stroke-width="2.5" stroke-linecap="round" />
+</svg>

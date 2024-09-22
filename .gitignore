@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+
+# Model files
+/models/*
+
+# Exceptions for empty directories and specific files
+!/models/.gitkeep
+!/models/faster_whisper/.gitkeep
+!/models/llama_tokenizer/.gitkeep
+!/models/pyannote/.gitkeep
+!/models/voice_activity_detection/.gitkeep
+!/models/wav2vec2_base/.gitkeep
+!/models/speechbrain_models/.gitkeep
+
+# Allow specific configuration files if needed
+!/models/llama_tokenizer/tokenizer_config.json
+!/models/llama_tokenizer/special_tokens_map.json
+
+# Virtual environment
+.venv/
+venv/
+
+# VS Code
+.vscode/
+
+# FFmpeg folder (as suggested earlier)
+/ffmpeg/*
+!/ffmpeg/.gitkeep
+
+# PyInstaller
+build/
+dist/
+
+# Inno Setup
+Output/
+
+# User-specific files
+*.log
+whisper_gui_settings.json
