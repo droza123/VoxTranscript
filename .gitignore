@@ -4,10 +4,15 @@ __pycache__/
 *.so
 
 # Model files
-/models/*
+# /models/*
 
 # Ignore everything in the models directory
-models/*
+models/faster_whisper/*
+models/llama_tokenizer/*
+models/pyannote/*
+models/speechbrain_models/*
+models/voice_activity_detection/*
+models/wav2vec2_base/*
 
 # But don't ignore the .gitkeep files in models and its subdirectories
 !models/.gitkeep
@@ -16,10 +21,6 @@ models/*
 # Don't ignore specific configuration files
 !models/llama_tokenizer/tokenizer_config.json
 !models/llama_tokenizer/special_tokens_map.json
-
-# Ignore all other files in subdirectories
-models/*/*
-!models/llama_tokenizer/*
 
 # Virtual environment
 .venv/
