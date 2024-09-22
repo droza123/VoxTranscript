@@ -1,8 +1,10 @@
 import os
+import logging
 import sys
 import appdirs
 import tempfile
 import torch
+import gc
 
 APP_NAME = "VoxTranscript"
 APP_AUTHOR = None
@@ -55,6 +57,33 @@ def check_gpu_availability():
         return False
 
     return True
+
+def force_cuda_memory_release():
+    if torch.cuda.is_available():
+        # Clear PyTorch's CUDA memory cache
+        torch.cuda.empty_cache()
+        
+        # Force CUDA to release all memory
+        torch.cuda.synchronize()
+        
+        # Attempt to release all unoccupied cached memory
+        torch.cuda.memory_allocated()
+        torch.cuda.memory_cached()
+        
+        # Run garbage collection
+        gc.collect()
+        
+        logging.info("Forced CUDA memory release")
+    else:
+        logging.info("CUDA not available, skipping memory release")
+
+def log_gpu_memory_usage():
+    if torch.cuda.is_available():
+        allocated = torch.cuda.memory_allocated() / 1024**2
+        cached = torch.cuda.memory_reserved() / 1024**2
+        logging.info(f"GPU Memory: Allocated: {allocated:.2f} MB, Cached: {cached:.2f} MB")
+    else:
+        logging.info("CUDA not available, cannot log GPU memory usage")
 
 def resource_path(relative_path):
     """Get absolute path to resource, works for dev and for PyInstaller"""

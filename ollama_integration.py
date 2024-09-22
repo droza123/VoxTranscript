@@ -4,7 +4,7 @@ import requests
 import asyncio
 import json
 import aiohttp
-from asyncio import TimeoutError as AsyncTimeoutError
+import gc
 from transformers import AutoTokenizer
 from subprocess_context import silent_subprocess
 
@@ -163,7 +163,8 @@ class OllamaIntegration:
         system_tokens = self.count_tokens(system_prompt)
         user_tokens = self.count_tokens(user_prompt)
         total_tokens = system_tokens + user_tokens
-
+        self.clear_tokenizer() # Unload the tokenizer model
+        
         self.logger.info(f"System tokens: {system_tokens}")
         self.logger.info(f"User tokens: {user_tokens}")
         self.logger.info(f"Total tokens: {total_tokens}")
@@ -191,14 +192,9 @@ class OllamaIntegration:
             response.raise_for_status()
             result = response.json()
             return result['response']
-        except AsyncTimeoutError:
-            self.logger.error("Timeout while generating summary")
-            return None
-        except requests.RequestException as e:
-            self.logger.error(f"Error communicating with Ollama: {str(e)}")
-            return None
-        except json.JSONDecodeError:
-            self.logger.error("Failed to decode JSON response from Ollama")
+        except Exception as e:
+            self.logger.error(f"Error generating summary: {str(e)}")
+            await self.unload_model()  # Attempt to unload model in case of error
             return None
 
     async def is_ollama_available(self):
@@ -214,12 +210,11 @@ class OllamaIntegration:
             
             payload = {
                 "model": self.model,
-                "messages": [],
                 "keep_alive": 0
             }
-            
+
             async with aiohttp.ClientSession() as session:
-                async with session.post(self.chat_endpoint, json=payload) as response:
+                async with session.post(self.generate_endpoint, json=payload) as response:
                     if response.status == 200:
                         result = await response.json()
                         if result.get('done') and result.get('done_reason') == 'unload':
@@ -232,6 +227,13 @@ class OllamaIntegration:
             self.logger.error(f"Exception while unloading model {self.model}: {str(e)}")
         finally:
             self.logger.info("Completed unload_model method")
+
+    def clear_tokenizer(self):
+        if hasattr(self, 'tokenizer'):
+            del self.tokenizer
+            self.tokenizer = None
+            logging.info("Cleared llama tokenizer")
+        gc.collect()
 
 # Usage example:
 # async def main():

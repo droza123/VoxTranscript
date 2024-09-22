@@ -31,7 +31,7 @@ from contextlib import contextmanager
 
 from load_resources import get_ffmpeg
 from audio import decode_audio
-from pyannote_diarization import DiarizationPipeline
+from pyannote_diarization import get_diarization_pipeline
 
 
 @contextmanager
@@ -467,25 +467,26 @@ class Transcriber:
                 if not self.config.diarize:
                     return transcriptions
 
-                diarize_model = DiarizationPipeline(
-                    config_path=self.config.pyannote_config_path,
-                    model_path=self.model_path,
-                    device=self.device
-                )
                 diarized_results = []
 
                 try:
-                    for result, audio_path, language_info in transcriptions:
-                        diarize_segments = diarize_model(
-                            audio_path,
-                            min_speakers=self.config.min_speakers,
-                            max_speakers=self.config.max_speakers,
-                        )
-                        result = assign_word_speakers(diarize_segments, result)
-                        diarized_results.append((result, audio_path, language_info))
-                finally:
-                    del diarize_model
-                    gc.collect()
+                    with get_diarization_pipeline(
+                        config_path=self.config.pyannote_config_path,
+                        model_path=self.model_path,
+                        device=self.device
+                    ) as diarize_model:
+                        for result, audio_path, language_info in transcriptions:
+                            diarize_segments = diarize_model(
+                                audio_path,
+                                min_speakers=self.config.min_speakers,
+                                max_speakers=self.config.max_speakers,
+                            )
+                            result = assign_word_speakers(diarize_segments, result)
+                            diarized_results.append((result, audio_path, language_info))
+                except Exception as e:
+                    logging.error(f"Error during diarization: {str(e)}")
+                    # If diarization fails, return the original transcriptions
+                    return transcriptions
 
                 return diarized_results
 
@@ -502,3 +503,31 @@ class Transcriber:
             result["user_chosen_language"] = language_info['user_chosen']
             result["detected_language"] = language_info['detected']
             writer(result, audio_path, writer_args)
+    
+    def unload_vad_model(self):
+        if hasattr(self, 'vad_model'):
+            del self.vad_model
+            self.vad_model = None
+            logging.info("Unloaded VAD model")
+
+    def unload_alignment_model(self):
+        if hasattr(self, 'align_model'):
+            del self.align_model
+            self.align_model = None
+            logging.info("Unloaded alignment model")
+
+    def unload_speechbrain_model(self):
+        if hasattr(self, 'speechbrain_model'):
+            del self.speechbrain_model
+            self.speechbrain_model = None
+            logging.info("Unloaded SpeechBrain model")
+
+    # Call this method after each major step
+    def unload_all_models(self):
+        self.unload_asr_model()
+        self.unload_vad_model()
+        self.unload_alignment_model()
+        self.unload_speechbrain_model()
+        torch.cuda.empty_cache()
+        gc.collect()
+        logging.info("Unloaded all models and cleared GPU memory")

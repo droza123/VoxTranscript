@@ -21,6 +21,7 @@ from audio import prepare_audio
 from sleep_prevention import sleep_preventer
 from ollama_integration import OllamaIntegration
 from subprocess_context import silent_subprocess
+from utils import force_cuda_memory_release, log_gpu_memory_usage
 
 @contextmanager
 def gpu_memory_manager():
@@ -140,6 +141,9 @@ class TranscriptionWorker(QThread):
             self.progress.emit(self.file, "Refining timestamps", self.current_stage, self.total_stages, False)
             aligned_results = self.transcriber.align_transcriptions(results)
             self.progress.emit(self.file, "Refining timestamps", self.current_stage, self.total_stages, True)
+            
+            # Unload alignment model
+            self.transcriber.unload_alignment_model()
             self.clear_gpu_memory()
             
             if self.is_stopped:
@@ -158,6 +162,7 @@ class TranscriptionWorker(QThread):
                     self.error.emit(f"Error during speaker detection: {str(e)}. Continuing without diarization.")
                     final_results, _, language_info = aligned_results[0]
                 self.progress.emit(self.file, "Detecting speakers", self.current_stage, self.total_stages, True)
+                self.transcriber.unload_all_models()  # Unload diarization models
                 self.clear_gpu_memory()
             else:
                 final_results, _, language_info = aligned_results[0]
@@ -168,6 +173,7 @@ class TranscriptionWorker(QThread):
                 self.progress.emit(self.file, "Calculating voice embeddings", self.current_stage, self.total_stages, False)
                 transcript, speakers = self.get_transcript_and_speakers(final_results, prepared_audio)
                 self.progress.emit(self.file, "Calculating voice embeddings", self.current_stage, self.total_stages, True)
+                self.transcriber.unload_speechbrain_model() # Unload speechbrain model
                 self.clear_gpu_memory()
             else:
                 transcript, speakers = self.get_transcript_and_speakers(final_results, prepared_audio, skip_embeddings=True)
@@ -198,6 +204,8 @@ class TranscriptionWorker(QThread):
             self.file_transcribed.emit(self.file, False, {}, "Failed", {})  # Emit Failed status
         finally:
             self.cleanup(prepared_audio, clip1, clip2)
+            force_cuda_memory_release()
+            log_gpu_memory_usage()
 
     def transcription_progress_callback(self, progress):
         if self.in_transcription_stage:
@@ -473,18 +481,31 @@ class TranscriptionWorker(QThread):
         # Check if "Nuestro Padre" is mentioned
         includes_nuestro_padre = self.check_for_nuestro_padre(clean_transcript)
         
+        async def generate():
+            try:
+                return await self.ollama.generate_summary(clean_transcript, includes_nuestro_padre)
+            except Exception as e:
+                logging.error(f"Error generating summary: {str(e)}")
+                return None
+
         try:
-            # Use run_in_executor to run the coroutine in a separate thread
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            summary = loop.run_until_complete(self.ollama.generate_summary(clean_transcript, includes_nuestro_padre))
+
+        try:
+            summary = loop.run_until_complete(generate())
             return summary
+        except Exception as e:
+            logging.error(f"Unexpected error in generate_summary: {str(e)}")
+            return None
         finally:
-            # Ensure the model is unloaded
-            if self.ollama:
-                loop.run_until_complete(self.ollama.unload_model())
-                self.ollama = None
-            loop.close()
+            # We don't need to explicitly unload the model anymore
+            self.ollama = None
+            # Only close the loop if we created a new one
+            if loop != asyncio.get_event_loop():
+                loop.close()
     
     def check_for_nuestro_padre(self, transcript):
         lower_transcript = transcript.lower()
