@@ -13,7 +13,7 @@ from PyInstaller.utils.hooks import collect_submodules, collect_data_files, copy
 block_cipher = None
 
 # Specify the path to your virtual environment's site-packages
-venv_site_packages = r'C:\Users\frdev\Downloads\ClaudeWhisperXGuiOffline\.venv\lib\site-packages'
+venv_site_packages = r'C:\Users\frdev\Downloads\VoxTranscript\.venv\lib\site-packages'
 
 # Ensure the virtual environment path is in sys.path
 if venv_site_packages not in sys.path:
