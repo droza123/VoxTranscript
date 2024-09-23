@@ -42,10 +42,14 @@ speechbrain_submodules = collect_submodules('speechbrain')
 # Get the path to the blobfile package
 blobfile_path = os.path.dirname(blobfile.__file__)
 
+# Add ffmpeg to the binaries
+ffmpeg_dir = 'ffmpeg'
+ffmpeg_files = [(os.path.join(ffmpeg_dir, file), 'ffmpeg') for file in os.listdir(ffmpeg_dir) if file.endswith('.exe')]
+
 a = Analysis(
     ['app.py'],
     pathex=[venv_site_packages],
-    binaries=[],  # Remove FFmpeg DLLs from here
+    binaries=ffmpeg_files,  # Include ffmpeg binaries here
     datas=[
         ('gui', 'gui'),
         ('icons', 'icons'),
@@ -55,7 +59,6 @@ a = Analysis(
         ('pyannote_diarization.py', '.'),
         ('utils.py', '.'),
         ('models', 'models'),
-        ('ffmpeg', 'ffmpeg'),  # Include the entire ffmpeg folder
         (blobfile_path, 'blobfile'),
         (speechbrain_path, 'speechbrain'),
     ] + whisperx_datas + pyannote_datas + lightning_fabric_datas + pytorch_lightning_datas + 

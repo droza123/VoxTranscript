@@ -3,19 +3,31 @@ import platform
 import shutil
 import requests
 from tqdm import tqdm
+import sys
 
 from utils import resource_path
 
 def get_ffmpeg():
     system = platform.system()
     if system == "Windows":
-        return get_ffmpeg_windows()
+        ffmpeg_path = get_ffmpeg_windows()
+        # Add FFMPEG directory to PATH
+        ffmpeg_dir = os.path.dirname(ffmpeg_path)
+        os.environ['PATH'] = ffmpeg_dir + os.pathsep + os.environ['PATH']
+        return ffmpeg_path
     else:
         return "ffmpeg"  # Assume ffmpeg is in PATH for non-Windows systems
 
 def get_ffmpeg_windows():
-    ffmpeg_dir = resource_path("ffmpeg")
-    ffmpeg_path = os.path.join(ffmpeg_dir, "ffmpeg.exe")
+    if getattr(sys, 'frozen', False):
+        # Running as compiled executable
+        base_path = sys._MEIPASS
+        ffmpeg_path = os.path.join(base_path, "ffmpeg", "ffmpeg.exe")
+    else:
+        # Running in development mode
+        ffmpeg_dir = resource_path("ffmpeg")
+        ffmpeg_path = os.path.join(ffmpeg_dir, "ffmpeg.exe")
+    
     if not os.path.exists(ffmpeg_path):
         url = 'https://github.com/GyanD/codexffmpeg/releases/download/6.0/ffmpeg-6.0-essentials_build.zip'
         ffmpeg_zip = os.path.join(ffmpeg_dir, "ffmpeg.zip")

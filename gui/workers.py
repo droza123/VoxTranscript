@@ -119,39 +119,45 @@ class TranscriptionWorker(QThread):
             else:
                 detected_language = self.config.language
 
-            # Transcription stage
-            self.current_stage += 1
-            self.progress.emit(self.file, "Transcribing audio", self.current_stage, self.total_stages, False)
-            self.in_transcription_stage = True
-            self.transcriber.set_progress_callback(self.transcription_progress_callback)
-            results = self.transcriber.transcribe(prepared_audio, detected_language=detected_language)
-            self.in_transcription_stage = False
-            self.progress.emit(self.file, "Transcribing audio", self.current_stage, self.total_stages, True)
-            
-            # Unload ASR model
-            self.transcriber.unload_asr_model()
-            self.clear_gpu_memory()
-
             if self.is_stopped:
                 self.handle_stop()
                 return
 
-            # Alignment stage
+            # Transcription stage
             self.current_stage += 1
-            self.progress.emit(self.file, "Refining timestamps", self.current_stage, self.total_stages, False)
-            aligned_results = self.transcriber.align_transcriptions(results)
-            self.progress.emit(self.file, "Refining timestamps", self.current_stage, self.total_stages, True)
+            self.progress.emit(self.file, "Transcribing audio", self.current_stage, self.total_stages, False)
+            self.in_transcription_stage = True
+            if self.transcriber and not self.is_stopped:
+                self.transcriber.set_progress_callback(self.transcription_progress_callback)
+                results = self.transcriber.transcribe(prepared_audio, detected_language=detected_language)
+            else:
+                raise Exception("Transcriber is not initialized or process was stopped")
+            self.in_transcription_stage = False
+            self.progress.emit(self.file, "Transcribing audio", self.current_stage, self.total_stages, True)
             
-            # Unload alignment model
-            self.transcriber.unload_alignment_model()
-            self.clear_gpu_memory()
+            if self.is_stopped:
+                self.handle_stop()
+                return
+
+            # Unload ASR model
+            self.safe_unload_model('unload_asr_model')
+
+            # Alignment stage
+            if not self.is_stopped:
+                self.current_stage += 1
+                self.progress.emit(self.file, "Refining timestamps", self.current_stage, self.total_stages, False)
+                aligned_results = self.transcriber.align_transcriptions(results)
+                self.progress.emit(self.file, "Refining timestamps", self.current_stage, self.total_stages, True)
+                
+                # Safely unload alignment model
+                self.safe_unload_model('unload_alignment_model')
             
             if self.is_stopped:
                 self.handle_stop()
                 return
 
             # Diarization stage (if enabled)
-            if self.config.diarize:
+            if self.config.diarize and not self.is_stopped:
                 self.current_stage += 1
                 self.progress.emit(self.file, "Detecting speakers", self.current_stage, self.total_stages, False)
                 try:
@@ -162,30 +168,46 @@ class TranscriptionWorker(QThread):
                     self.error.emit(f"Error during speaker detection: {str(e)}. Continuing without diarization.")
                     final_results, _, language_info = aligned_results[0]
                 self.progress.emit(self.file, "Detecting speakers", self.current_stage, self.total_stages, True)
-                self.transcriber.unload_all_models()  # Unload diarization models
-                self.clear_gpu_memory()
+                self.safe_unload_model('unload_all_models')  # Unload diarization models
             else:
                 final_results, _, language_info = aligned_results[0]
 
+            if self.is_stopped:
+                self.handle_stop()
+                return
+
             # Voice recognition stage (if enabled)
-            if self.config.save_voice_recognition and 'jsonl' in self.settings_manager.get('output_formats', []):
+            if self.config.save_voice_recognition and 'jsonl' in self.settings_manager.get('output_formats', []) and not self.is_stopped:
                 self.current_stage += 1
                 self.progress.emit(self.file, "Calculating voice embeddings", self.current_stage, self.total_stages, False)
-                transcript, speakers = self.get_transcript_and_speakers(final_results, prepared_audio)
-                self.progress.emit(self.file, "Calculating voice embeddings", self.current_stage, self.total_stages, True)
-                self.transcriber.unload_speechbrain_model() # Unload speechbrain model
-                self.clear_gpu_memory()
+                try:
+                    transcript, speakers = self.get_transcript_and_speakers(final_results, prepared_audio)
+                    self.progress.emit(self.file, "Calculating voice embeddings", self.current_stage, self.total_stages, True)
+                except Exception as e:
+                    logging.error(f"Error during voice embedding calculation: {str(e)}")
+                    self.error.emit(f"Error during voice embedding calculation: {str(e)}. Continuing without voice recognition.")
+                    transcript, speakers = self.get_transcript_and_speakers(final_results, prepared_audio, skip_embeddings=True)
+                finally:
+                    self.safe_unload_model('unload_speechbrain_model')
             else:
                 transcript, speakers = self.get_transcript_and_speakers(final_results, prepared_audio, skip_embeddings=True)
 
+            if self.is_stopped:
+                self.handle_stop()
+                return
+
             # Summarization stage (if enabled)
-            if self.settings_manager.get('auto_summarize', False):
+            if self.settings_manager.get('auto_summarize', False) and not self.is_stopped:
                 self.current_stage += 1
                 self.progress.emit(self.file, "Generating summary", self.current_stage, self.total_stages, False)
                 summary = self.generate_summary(transcript)
                 self.progress.emit(self.file, "Generating summary", self.current_stage, self.total_stages, True)
             else:
                 summary = None
+
+            if self.is_stopped:
+                self.handle_stop()
+                return
 
             # Saving stage
             self.current_stage += 1
@@ -194,14 +216,15 @@ class TranscriptionWorker(QThread):
             save_paths = self.save_transcription(self.file, prepared_audio, final_results, language_info, transcript, speakers, summary)
             self.progress.emit(self.file, "Saving transcription files", self.current_stage, self.total_stages, True)
 
-            self.file_transcribed.emit(self.file, True, save_paths, "Completed", file_info)
-            self.is_completed = True
-            self.clear_gpu_memory()
+            if not self.is_stopped:
+                self.file_transcribed.emit(self.file, True, save_paths, "Completed", file_info)
+                self.is_completed = True
 
         except Exception as e:
             logging.error(f"Error transcribing {self.file}: {str(e)}", exc_info=True)
             self.error.emit(f"Error transcribing {self.file}: {str(e)}")
-            self.file_transcribed.emit(self.file, False, {}, "Failed", {})  # Emit Failed status
+            if not self.is_stopped:
+                self.file_transcribed.emit(self.file, False, {}, "Failed", {})
         finally:
             self.cleanup(prepared_audio, clip1, clip2)
             force_cuda_memory_release()
@@ -253,13 +276,13 @@ class TranscriptionWorker(QThread):
 
     def handle_stop(self):
         logging.info("Transcription stopped")
-        self.file_transcribed.emit(self.file, False, "", "Stopped", {})
+        self.file_transcribed.emit(self.file, False, {}, "Stopped", {})
         self.stop_finished.emit()
 
     def cleanup(self, prepared_audio=None, clip1=None, clip2=None):
         sleep_preventer.allow_sleep()
+        self.safe_unload_model('unload_all_models')
         self.delete_model()
-        self.unload_transcriber()
         if hasattr(self, 'embedding_model'):
             del self.embedding_model
         self.clear_gpu_memory()
@@ -267,10 +290,15 @@ class TranscriptionWorker(QThread):
         logging.info(f"Transcription process finished for file: {self.file}")
     
     def delete_model(self):
-        if self.transcriber and self.transcriber.model:
-            del self.transcriber.model
-            self.transcriber.model = None
-            logging.info("Deleted transcriber model")
+        if self.transcriber:
+            if hasattr(self.transcriber, 'model'):
+                try:
+                    del self.transcriber.model
+                    self.transcriber.model = None
+                    logging.info("Deleted transcriber model")
+                except Exception as e:
+                    logging.error(f"Error deleting transcriber model: {str(e)}")
+            self.transcriber = None
         self.clear_gpu_memory()
 
     def unload_transcriber(self):
@@ -303,6 +331,17 @@ class TranscriptionWorker(QThread):
             output_dir = self.settings_manager.get('output_folder', '')
             return output_dir if output_dir else os.path.dirname(self.file)
         
+    def safe_unload_model(self, unload_method):
+        if self.transcriber and hasattr(self.transcriber, unload_method):
+            try:
+                getattr(self.transcriber, unload_method)()
+                logging.info(f"Successfully unloaded model: {unload_method}")
+            except Exception as e:
+                logging.error(f"Error unloading model ({unload_method}): {str(e)}")
+        else:
+            logging.warning(f"Transcriber or unload method {unload_method} not available")
+        self.clear_gpu_memory()
+
     def stop(self):
         self.is_stopped = True
         self.cleanup()
