@@ -1,6 +1,8 @@
 # gui/components.py
 import os
 import logging
+import subprocess
+import asyncio
 from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QPushButton, QLabel, QComboBox, QCheckBox,
     QVBoxLayout, QProgressBar, QSpacerItem, QSizePolicy, QGroupBox,
@@ -338,7 +340,33 @@ class ControlPanel(QWidget):
         
         self.model_fetcher = OllamaModelFetcher(self.ollama_integration)
         self.model_fetcher.models_fetched.connect(self.update_ollama_models)
+        self.model_fetcher.ollama_not_running.connect(self.handle_ollama_not_running)
         self.model_fetcher.start()
+    
+    def handle_ollama_not_running(self):
+        self.refresh_button.stop_animation()
+        reply = QMessageBox.question(
+            self,
+            "Ollama Not Running",
+            "Ollama is not running. Would you like to start it?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.start_ollama()
+        else:
+            self.ollama_model_combo.clear()
+            self.ollama_model_combo.addItem("Ollama is not running")
+            self.ollama_model_combo.setEnabled(False)
+    
+    def start_ollama(self):
+        try:
+            subprocess.Popen(["ollama", "serve"], 
+                             stdout=subprocess.DEVNULL, 
+                             stderr=subprocess.DEVNULL)
+            QMessageBox.information(self, "Ollama Started", "Ollama has been started. Please wait a moment and then refresh the models.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to start Ollama: {str(e)}")
 
     def update_ollama_models(self, models):
         logging.debug(f"Retrieved models: {models}")
@@ -854,6 +882,7 @@ class ControlPanel(QWidget):
 
 class OllamaModelFetcher(QThread):
     models_fetched = pyqtSignal(list)
+    ollama_not_running = pyqtSignal()
 
     def __init__(self, ollama_integration):
         super().__init__()
@@ -861,6 +890,9 @@ class OllamaModelFetcher(QThread):
 
     def run(self):
         try:
+            if not asyncio.run(self.ollama_integration.ensure_ollama_running()):
+                self.ollama_not_running.emit()
+                return
             models = self.ollama_integration.get_models()
             self.models_fetched.emit(models)
         except Exception as e:

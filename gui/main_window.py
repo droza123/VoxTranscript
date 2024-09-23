@@ -482,6 +482,7 @@ class WhisperGUI(QMainWindow):
                 self.worker.file_transcribed.connect(self.on_file_transcribed)
                 self.worker.error.connect(self.on_error)
                 self.worker.finished.connect(self.on_worker_finished)
+                self.worker.ollama_not_running.connect(self.handle_ollama_not_running)
                 self.worker.start()
             except Exception as e:
                 logging.error(f"Failed to start transcription: {str(e)}", exc_info=True)
@@ -489,6 +490,12 @@ class WhisperGUI(QMainWindow):
                 self.reset_transcription_state()
         else:
             self.on_transcription_finished()
+    
+    def handle_ollama_not_running(self):
+        QMessageBox.warning(self, "Ollama Not Running", 
+                            "Ollama is not running. Please start Ollama and select a model, or disable the auto-summarize option.")
+        self.reset_transcription_state()
+        self.control_panel.auto_summarize_toggle.setChecked(False)
 
     def update_existing_transcription_check(self):
         for file in list(self.file_queue.keys()):

@@ -36,9 +36,10 @@ def gpu_memory_manager():
 
 class TranscriptionWorker(QThread):
     progress = pyqtSignal(str, str, int, int, bool)
-    file_transcribed = pyqtSignal(str, bool, object, str, dict, str, str)  # Added log_file_path and log_folder_path
+    file_transcribed = pyqtSignal(str, bool, object, str, dict, str, str)
     error = pyqtSignal(str)
     stop_finished = pyqtSignal()
+    ollama_not_running = pyqtSignal()  # New signal to indicate Ollama is not running
 
     def __init__(self, config, file, settings_manager):
         super().__init__()
@@ -58,6 +59,14 @@ class TranscriptionWorker(QThread):
         self.ollama = None
         self.log_file_path = logging.getLoggerClass().root.handlers[0].baseFilename
         self.log_folder_path = os.path.dirname(self.log_file_path)
+
+    async def check_ollama(self):
+        if self.settings_manager.get('auto_summarize', False):
+            if not self.ollama:
+                chosen_model = self.settings_manager.get('ollama_model', 'llama3.1:70b')
+                self.ollama = OllamaIntegration(model=chosen_model)
+            return await self.ollama.ensure_ollama_running()
+        return True
 
     def calculate_total_stages(self):
         stages = 4  # Base stages: preparation, transcription, alignment, and saving
@@ -93,6 +102,13 @@ class TranscriptionWorker(QThread):
         try:
             sleep_preventer.prevent_sleep()
             
+            # Check if Ollama is running if auto-summarization is enabled
+            if self.settings_manager.get('auto_summarize', False):
+                ollama_running = asyncio.run(self.check_ollama())
+                if not ollama_running:
+                    self.ollama_not_running.emit()
+                    return
+
             # Initialize Transcriber
             self.transcriber = Transcriber(self.config, self.settings_manager)
 
