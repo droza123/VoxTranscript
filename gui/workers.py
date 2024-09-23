@@ -242,7 +242,7 @@ class TranscriptionWorker(QThread):
             logging.error(f"Error transcribing {self.file}: {str(e)}", exc_info=True)
             self.error.emit(f"Error transcribing {self.file}: {str(e)}")
             if not self.is_stopped:
-                self.file_transcribed.emit(self.file, False, {}, "Failed", {}, self.log_file_path, self.log_folder_path)
+                self.file_transcribed.emit(self.file, False, {}, "Failed", {}, self.log_file_path, self.log_folder_path, self.log_file_path, self.log_folder_path)
         finally:
             self.cleanup(prepared_audio, clip1, clip2)
             force_cuda_memory_release()
@@ -294,7 +294,7 @@ class TranscriptionWorker(QThread):
 
     def handle_stop(self):
         logging.info("Transcription stopped")
-        self.file_transcribed.emit(self.file, False, {}, "Stopped", {})
+        self.file_transcribed.emit(self.file, False, {}, "Stopped", {}, self.log_file_path, self.log_folder_path)
         self.stop_finished.emit()
 
     def cleanup(self, prepared_audio=None, clip1=None, clip2=None):
