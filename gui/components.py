@@ -1068,8 +1068,10 @@ class FileCardWidget(QWidget):
         self.file = file
         self.settings_manager = settings_manager
         self.save_paths = {}
-        self.total_stages = 4  # Default to 4 stages
+        self.total_stages = 4
         self.current_stage = 0
+        self.log_file_path = None
+        self.log_folder_path = None
 
         # Main layout
         main_layout = QVBoxLayout(self)
@@ -1110,6 +1112,8 @@ class FileCardWidget(QWidget):
         self.remove_button = self.create_icon_button("trash-2", "Remove from queue")
 
         self.open_file_button.setEnabled(False)
+        self.open_folder_button.setEnabled(True)
+        self.remove_button.setEnabled(True)
 
         right_layout.addWidget(self.open_file_button)
         right_layout.addWidget(self.open_folder_button)
@@ -1128,7 +1132,6 @@ class FileCardWidget(QWidget):
         self.progress_bar.setFixedHeight(10)
         self.progress_bar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         
-        # Apply custom style sheet directly to the progress bar
         self.progress_bar.setStyleSheet("""
             QProgressBar {
                 background-color: #e6e6e6;
@@ -1145,8 +1148,8 @@ class FileCardWidget(QWidget):
         main_layout.addWidget(content_widget)
         main_layout.addWidget(self.progress_bar)
 
-        self.open_file_button.clicked.connect(self.open_transcription)
-        self.open_folder_button.clicked.connect(self.open_containing_folder)
+        self.open_file_button.clicked.connect(self.open_file)
+        self.open_folder_button.clicked.connect(self.open_folder)
         self.remove_button.clicked.connect(lambda: remove_callback(file))
 
         self.setFixedHeight(110)
@@ -1173,23 +1176,8 @@ class FileCardWidget(QWidget):
 
     def create_icon_button(self, icon_name, tooltip):
         button = QPushButton()
-        
-        # Create icon with normal and disabled states
-        icon = QIcon()
-        sizes = [24, 48]  # Add more sizes if needed
-        for size in sizes:
-            # Normal state
-            normal_pixmap = QIcon(resource_path(os.path.join("icons", f"{icon_name}.svg"))).pixmap(size, size)
-            icon.addPixmap(normal_pixmap, QIcon.Mode.Normal, QIcon.State.Off)
-            
-            # Disabled state
-            disabled_pixmap = QPixmap(normal_pixmap)
-            painter = QPainter(disabled_pixmap)
-            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
-            painter.fillRect(disabled_pixmap.rect(), QColor(128, 128, 128))  # Grey color
-            painter.end()
-            icon.addPixmap(disabled_pixmap, QIcon.Mode.Disabled, QIcon.State.Off)
-        
+        button.setProperty('icon_name', icon_name)
+        icon = QIcon(resource_path(os.path.join("icons", f"{icon_name}.svg")))
         button.setIcon(icon)
         button.setIconSize(QSize(24, 24))
         button.setToolTip(tooltip)
@@ -1209,6 +1197,35 @@ class FileCardWidget(QWidget):
         """)
         return button
 
+    def set_icon_enabled(self, button, enabled):
+        button.setEnabled(enabled)
+        self.update_icon_appearance(button, enabled)
+        
+    def open_file(self):
+        if self.status_label.text() == "Status: Failed":
+            if self.log_file_path and os.path.exists(self.log_file_path):
+                QDesktopServices.openUrl(QUrl.fromLocalFile(self.log_file_path))
+            else:
+                QMessageBox.warning(self, "Log File Not Found", "The log file could not be found.")
+        elif self.save_paths:
+            for ext in ['txt', 'srt', 'json']:
+                if ext in self.save_paths:
+                    QDesktopServices.openUrl(QUrl.fromLocalFile(self.save_paths[ext]))
+                    break
+
+    def open_folder(self):
+        if self.status_label.text() == "Status: Failed":
+            if self.log_folder_path and os.path.exists(self.log_folder_path):
+                QDesktopServices.openUrl(QUrl.fromLocalFile(self.log_folder_path))
+            else:
+                QMessageBox.warning(self, "Log Folder Not Found", "The log folder could not be found.")
+        else:
+            folder_path = os.path.normpath(os.path.dirname(self.file))
+            if os.path.exists(folder_path):
+                QDesktopServices.openUrl(QUrl.fromLocalFile(folder_path))
+            else:
+                QMessageBox.warning(self, "Folder Not Found", f"The folder {folder_path} does not exist.")
+
     def open_transcription(self):
         if self.save_paths:
             # Prioritize opening files in this order: txt, srt, json
@@ -1225,13 +1242,36 @@ class FileCardWidget(QWidget):
             logging.warning(f"Folder not found: {folder_path}")
             QMessageBox.warning(self, "Folder Not Found", f"The folder {folder_path} does not exist.")
 
-    def update_status(self, status, current_stage, total_stages, stage_complete, save_paths=None):
+    def update_status(self, status, current_stage, total_stages, stage_complete, save_paths=None, log_file_path=None, log_folder_path=None):
         self.status_label.setText(f"Status: {status}")
         self.total_stages = total_stages
         self.current_stage = current_stage
         
         if save_paths:
             self.save_paths = save_paths
+
+        if log_file_path:
+            self.log_file_path = log_file_path
+        if log_folder_path:
+            self.log_folder_path = log_folder_path
+
+        if status == "Queued":
+            self.set_icon_enabled(self.open_file_button, False)
+            self.set_icon_enabled(self.open_folder_button, True)
+            self.set_icon_enabled(self.remove_button, True)
+        elif status == "In Progress":
+            self.set_icon_enabled(self.open_file_button, False)
+            self.set_icon_enabled(self.open_folder_button, False)
+            self.set_icon_enabled(self.remove_button, False)
+        elif status == "Completed":
+            self.set_icon_enabled(self.open_file_button, True)
+            self.set_icon_enabled(self.open_folder_button, True)
+            self.set_icon_enabled(self.remove_button, True)
+        elif status == "Failed":
+            self.update_button_icons_for_failed_state()
+            self.set_icon_enabled(self.open_file_button, True)
+            self.set_icon_enabled(self.open_folder_button, True)
+            self.set_icon_enabled(self.remove_button, True)
 
         if status == "Stopped":
             self.current_stage = 0
@@ -1258,10 +1298,39 @@ class FileCardWidget(QWidget):
         elif stage_complete:
             progress = int((self.current_stage / self.total_stages) * 100)
             self.progress_bar.setValue(progress)
-
-        self.open_file_button.setEnabled(status == "Completed" and bool(self.save_paths))
-        self.open_folder_button.setEnabled(status == "Completed" and bool(self.save_paths))
     
+    def update_button_icons_for_failed_state(self):
+        self.open_file_button.setIcon(QIcon(resource_path(os.path.join("icons", "log-file-icon.svg"))))
+        self.open_file_button.setToolTip("Open error log file")
+        self.open_folder_button.setIcon(QIcon(resource_path(os.path.join("icons", "log-folder-icon.svg"))))
+        self.open_folder_button.setToolTip("Open log folder")
+    
+    def reset_appearance(self):
+        self.progress_bar.setValue(0)
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                background-color: #e6e6e6;
+                border: 1px solid #d0d0d0;
+                border-radius: 5px;
+            }
+            QProgressBar::chunk {
+                background-color: #4a90e2;
+                border-radius: 4px;
+            }
+        """)
+        self.setStyleSheet("")  # Reset the widget's style
+        self.status_label.setText("Status: Queued")
+        self.update_button_icons_for_normal_state()
+        self.set_icon_enabled(self.open_file_button, False)
+        self.set_icon_enabled(self.open_folder_button, True)
+        self.set_icon_enabled(self.remove_button, True)
+
+    def update_button_icons_for_normal_state(self):
+        self.open_file_button.setIcon(QIcon(resource_path(os.path.join("icons", "file-text.svg"))))
+        self.open_file_button.setToolTip("Open transcription")
+        self.open_folder_button.setIcon(QIcon(resource_path(os.path.join("icons", "folder-open.svg"))))
+        self.open_folder_button.setToolTip("Open containing folder")
+        
     def update_progress(self, value):
         self.progress_bar.setValue(value)
         self.progress_bar.repaint()  # Ensure the progress bar updates visually
@@ -1269,8 +1338,28 @@ class FileCardWidget(QWidget):
     def set_open_button_enabled(self, enabled):
         self.open_file_button.setEnabled(enabled)
     
+    def set_icons_enabled(self, enabled):
+        self.open_file_button.setEnabled(enabled)
+        self.open_folder_button.setEnabled(enabled)
+        self.update_icon_appearance(self.open_file_button, enabled)
+        self.update_icon_appearance(self.open_folder_button, enabled)
+    
+    def update_icon_appearance(self, button, enabled):
+        icon_name = button.property('icon_name')
+        if enabled:
+            icon = QIcon(resource_path(os.path.join("icons", f"{icon_name}.svg")))
+        else:
+            pixmap = QIcon(resource_path(os.path.join("icons", f"{icon_name}.svg"))).pixmap(button.iconSize())
+            painter = QPainter(pixmap)
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+            painter.fillRect(pixmap.rect(), QColor(128, 128, 128))  # Gray color
+            painter.end()
+            icon = QIcon(pixmap)
+        button.setIcon(icon)
+        
     def set_delete_enabled(self, enabled):
         self.remove_button.setEnabled(enabled)
+        self.update_icon_appearance(self.remove_button, enabled)
 
 class FileQueueComponent(QWidget):
     files_added = pyqtSignal()  # Signal to indicate files have been added
@@ -1426,10 +1515,10 @@ class FileQueueComponent(QWidget):
             self.file_cards[file].progress_bar.setValue(0)
         self.update_overall_progress()
 
-    def update_file_status(self, file, success, save_paths, status):
+    def update_file_status(self, file, success, save_paths, status, log_file_path, log_folder_path):
         if file in self.file_cards:
             previous_stage = self.file_cards[file].current_stage
-            self.file_cards[file].update_status(status, self.file_cards[file].total_stages, self.file_cards[file].total_stages, True, save_paths)
+            self.file_cards[file].update_status(status, self.file_cards[file].total_stages, self.file_cards[file].total_stages, True, save_paths, log_file_path, log_folder_path)
             self.completed_stages += (self.file_cards[file].total_stages - previous_stage)
         self.update_overall_progress()
 
@@ -1455,6 +1544,11 @@ class FileQueueComponent(QWidget):
     def set_delete_enabled(self, enabled):
         for card in self.file_cards.values():
             card.set_delete_enabled(enabled)
+
+    def set_delete_buttons_enabled(self, enabled):
+        for file, card in self.file_cards.items():
+            if self.get_file_status(file) != "Completed":
+                card.set_delete_enabled(enabled)
 
     def reset_progress(self):
         self.completed_stages = 0

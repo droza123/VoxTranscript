@@ -2,7 +2,7 @@
 
 import os
 import logging
-from PyQt6.QtWidgets import QMainWindow, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QMessageBox, QFrame, QApplication
+from PyQt6.QtWidgets import QMainWindow, QDialog, QPushButton, QWidget, QVBoxLayout, QHBoxLayout, QMessageBox, QFrame, QApplication
 from PyQt6.QtGui import QIcon, QDesktopServices
 from PyQt6.QtCore import Qt, QUrl
 import importlib
@@ -412,6 +412,7 @@ class WhisperGUI(QMainWindow):
         
         if remaining_files == 0:
             QMessageBox.information(self, "Transcription Complete", "All files have already been processed.")
+            self.set_ui_enabled(True)
             return
 
         config = self.create_transcription_config()
@@ -423,6 +424,19 @@ class WhisperGUI(QMainWindow):
         
         self.file_queue_component.set_total_files(remaining_files, stages_per_file)
         
+        # Set initial state for all file cards
+        for index, (file, file_card) in enumerate(self.file_queue_component.file_cards.items()):
+            if index < self.current_file_index:
+                # Files that have already been processed
+                file_card.update_status("Completed", stages_per_file, stages_per_file, True)
+            elif index == self.current_file_index:
+                # The file that's about to be processed
+                file_card.update_status("In Progress", 0, stages_per_file, False)
+            else:
+                # Files that are still queued
+                file_card.reset_appearance()
+                file_card.update_status("Queued", 0, stages_per_file, False)
+
         # Update control panel buttons
         self.control_panel.start_button.setEnabled(False)
         self.set_transcription_running_state(True)
@@ -531,7 +545,9 @@ class WhisperGUI(QMainWindow):
             logging.info(f"Overall progress updated: {overall_progress:.2f}%")
     
     def on_file_transcribed(self, file, success, save_paths, status, file_info):
-        self.file_queue_component.update_file_status(file, success, save_paths, status)
+        log_file_path = logging.getLoggerClass().root.handlers[0].baseFilename
+        log_folder_path = os.path.dirname(log_file_path)
+        self.file_queue_component.update_file_status(file, success, save_paths, status, log_file_path, log_folder_path)
         logging.info(f"File transcribed: {file}, Status: {status}")
         if self.is_stopping and status == "Stopped":
             self.show_stop_message()
@@ -579,13 +595,25 @@ class WhisperGUI(QMainWindow):
             
             message = f"Transcription finished, but {len(incomplete_files)} files were not completed.\n"
             message += f"{len(failed_files)} files failed.\n"
-            message += "A summary report has been generated. Would you like to view it?"
+            message += "A summary report has been generated."
             
-            reply = QMessageBox.question(self, "Transcription Incomplete", message, 
-                                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            msg_box = QMessageBox(QMessageBox.Icon.Warning, "Transcription Incomplete", message, parent=self)
             
-            if reply == QMessageBox.StandardButton.Yes:
-                self.open_summary_report()
+            view_report_button = msg_box.addButton("View Report", QMessageBox.ButtonRole.ActionRole)
+            open_log_folder_button = msg_box.addButton("Open Log Folder", QMessageBox.ButtonRole.ActionRole)
+            ok_button = msg_box.addButton(QMessageBox.StandardButton.Ok)
+            
+            msg_box.setDefaultButton(ok_button)
+            
+            while True:
+                clicked_button = msg_box.exec()
+                
+                if msg_box.clickedButton() == view_report_button:
+                    self.open_summary_report()
+                elif msg_box.clickedButton() == open_log_folder_button:
+                    self.open_log_folder()
+                else:  # Ok button or close button (X) was clicked
+                    break
         
         self.control_panel.set_transcription_running(False)
         
@@ -634,6 +662,10 @@ class WhisperGUI(QMainWindow):
         log_dir = os.path.dirname(logging.getLoggerClass().root.handlers[0].baseFilename)
         report_path = os.path.join(log_dir, "transcription_summary_report.txt")
         QDesktopServices.openUrl(QUrl.fromLocalFile(report_path))
+
+    def open_log_folder(self):
+        log_dir = os.path.dirname(logging.getLoggerClass().root.handlers[0].baseFilename)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(log_dir))
         
     def reset_transcription_state(self):
         self.control_panel.start_button.setEnabled(True)

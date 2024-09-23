@@ -36,7 +36,7 @@ def gpu_memory_manager():
 
 class TranscriptionWorker(QThread):
     progress = pyqtSignal(str, str, int, int, bool)
-    file_transcribed = pyqtSignal(str, bool, object, str, dict)  
+    file_transcribed = pyqtSignal(str, bool, object, str, dict, str, str)  # Added log_file_path and log_folder_path
     error = pyqtSignal(str)
     stop_finished = pyqtSignal()
 
@@ -56,6 +56,8 @@ class TranscriptionWorker(QThread):
         self.in_transcription_stage = False
         self.temp_files = []
         self.ollama = None
+        self.log_file_path = logging.getLoggerClass().root.handlers[0].baseFilename
+        self.log_folder_path = os.path.dirname(self.log_file_path)
 
     def calculate_total_stages(self):
         stages = 4  # Base stages: preparation, transcription, alignment, and saving
@@ -141,7 +143,7 @@ class TranscriptionWorker(QThread):
 
             # Unload ASR model
             self.safe_unload_model('unload_asr_model')
-
+        
             # Alignment stage
             if not self.is_stopped:
                 self.current_stage += 1
@@ -217,14 +219,14 @@ class TranscriptionWorker(QThread):
             self.progress.emit(self.file, "Saving transcription files", self.current_stage, self.total_stages, True)
 
             if not self.is_stopped:
-                self.file_transcribed.emit(self.file, True, save_paths, "Completed", file_info)
+                self.file_transcribed.emit(self.file, True, save_paths, "Completed", file_info, self.log_file_path, self.log_folder_path)
                 self.is_completed = True
 
         except Exception as e:
             logging.error(f"Error transcribing {self.file}: {str(e)}", exc_info=True)
             self.error.emit(f"Error transcribing {self.file}: {str(e)}")
             if not self.is_stopped:
-                self.file_transcribed.emit(self.file, False, {}, "Failed", {})
+                self.file_transcribed.emit(self.file, False, {}, "Failed", {}, self.log_file_path, self.log_folder_path)
         finally:
             self.cleanup(prepared_audio, clip1, clip2)
             force_cuda_memory_release()

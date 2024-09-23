@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" fill="none" stroke="black" stroke-width="2"/>
+  <rect x="6" y="9" width="12" height="8" rx="2" ry="2" fill="black"/>
+  <text x="12" y="15" font-family="Arial, sans-serif" font-size="5" font-weight="bold" fill="white" text-anchor="middle">LOG</text>
+</svg>
