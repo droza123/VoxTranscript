@@ -5,6 +5,7 @@ import ffmpeg
 import numpy as np
 import wave
 import sys
+import torchaudio
 
 from subprocess_context import silent_subprocess
 
@@ -67,7 +68,7 @@ def prepare_audio(file_path, output_dir):
         except Exception as e:
             logging.error(f"Unexpected error preparing audio {file_path}: {str(e)}", exc_info=True)
             return None
-
+        
 def decode_audio(file: str, sampling_rate: int = 16000):
     try:
         with wave.open(file, 'rb') as wav_file:
