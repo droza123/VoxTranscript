@@ -100,6 +100,7 @@ class TranscriptionWorker(QThread):
         detected_language = None
 
         try:
+            log_gpu_memory_usage()
             sleep_preventer.prevent_sleep()
             
             # Check if Ollama is running if auto-summarization is enabled
@@ -115,14 +116,15 @@ class TranscriptionWorker(QThread):
             # Audio preparation stage
             self.current_stage += 1
             self.progress.emit(self.file, "Preparing audio", self.current_stage, self.total_stages, False)
-            prepared_audio, clip1, clip2 = self.prepare_audio_for_transcription()
-            if prepared_audio is None:
-                raise Exception("Failed to prepare audio")
-            self.progress.emit(self.file, "Preparing audio", self.current_stage, self.total_stages, True)
-
-            if self.is_stopped:
-                self.handle_stop()
-                return
+            try:
+                prepared_audio, clip1, clip2 = self.prepare_audio_for_transcription()
+                if prepared_audio is None:
+                    raise Exception("Failed to prepare audio")
+                self.progress.emit(self.file, "Preparing audio", self.current_stage, self.total_stages, True)
+            except Exception as e:
+                logging.error(f"Error in audio preparation for {self.file}: {str(e)}", exc_info=True)
+                self.file_transcribed.emit(self.file, False, {}, "Failed", {}, self.log_file_path, self.log_folder_path)
+                return  # Exit the method, moving to the next file
 
             # Language detection stage (if needed)
             if self.config.language is None or self.config.language == "Automatic":
