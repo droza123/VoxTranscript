@@ -1,6 +1,7 @@
 from subprocess_context import silent_subprocess
 from typing import Optional, Union
 import os
+import logging
 import yaml
 import numpy as np
 import pandas as pd
@@ -17,6 +18,8 @@ class DiarizationPipeline:
         model_path=None,
         device: Optional[Union[str, torch.device]] = None,
     ):
+        if model_path is None:
+            model_path = resource_path("models")
         with silent_subprocess():
             if device is None:
                 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -32,23 +35,45 @@ class DiarizationPipeline:
         with open(config_path, 'r') as config_file:
             config = yaml.safe_load(config_file)
 
+        logging.info(f"Loading model with config_path: {config_path}, model_path: {model_path}")
+        logging.info(f"Config contents: {config}")
+
         if model_path:
             # Update paths in the configuration
-            segmentation_model = os.path.join(model_path, "pyannote/segmentation-3.0/pytorch_model.bin").replace('\\', '/')
-            embedding_model = os.path.join(model_path, "pyannote/wespeaker-voxceleb-resnet34-LM/pytorch_model.bin").replace('\\', '/')
+            segmentation_model = resource_path(os.path.join("models", "pyannote", "segmentation-3.0", "pytorch_model.bin"))
+            embedding_model = resource_path(os.path.join("models", "pyannote", "wespeaker-voxceleb-resnet34-LM", "pytorch_model.bin"))
+            
+            # Check if files exist
+            if not os.path.exists(segmentation_model):
+                raise FileNotFoundError(f"Segmentation model not found at {segmentation_model}")
+            if not os.path.exists(embedding_model):
+                raise FileNotFoundError(f"Embedding model not found at {embedding_model}")
+
             config['pipeline']['params']['segmentation'] = segmentation_model
             config['pipeline']['params']['embedding'] = embedding_model
 
-        # Create a temporary configuration file
-        temp_config_path = get_app_file_path('temp_pyannote_config.yaml', 'temp')
-        with open(temp_config_path, 'w') as temp_config_file:
-            yaml.dump(config, temp_config_file)
+        logging.info(f"Updated segmentation path: {segmentation_model}")
+        logging.info(f"Updated embedding path: {embedding_model}")
+        
+        try:
+            # Create a temporary configuration file
+            temp_config_path = get_app_file_path('temp_pyannote_config.yaml', 'temp')
+            try:
+                with open(temp_config_path, 'w') as temp_config_file:
+                    yaml.dump(config, temp_config_file)
 
-        # Load model from the temporary config file
-        self.model = Pipeline.from_pretrained(temp_config_path, use_auth_token=False).to(self.device)
+                # Load model from the temporary config file
+                self.model = Pipeline.from_pretrained(temp_config_path, use_auth_token=False).to(self.device)
+                logging.info("Diarization model loaded successfully")
+            finally:
+                # Remove the temporary config file
+                if os.path.exists(temp_config_path):
+                    os.remove(temp_config_path)
+        except Exception as e:
+            logging.error(f"Error loading model: {str(e)}")
+            raise
 
-        # Remove the temporary config file
-        os.remove(temp_config_path)
+        return self.model
 
     def unload_model(self):
         if self.model is not None:

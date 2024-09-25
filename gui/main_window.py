@@ -480,6 +480,14 @@ class WhisperGUI(QMainWindow):
             config = self.create_transcription_config()
             current_file = list(self.file_queue.keys())[self.current_file_index]
             
+            if self.file_queue_component.get_file_status(current_file) == "Completed":
+                logging.info(f"File {current_file} has already been processed. Moving to next file.")
+                self.current_file_index += 1
+                self.start_next_transcription()
+                return
+
+            logging.info(f"Starting transcription for file: {current_file}")
+            
             self.transcription_manager.start_transcription(config, current_file, self.settings_manager)
         else:
             self.on_transcription_finished()
@@ -571,8 +579,14 @@ class WhisperGUI(QMainWindow):
         self.file_queue_component.update_file_status(file, success, save_paths, status, log_file_path, log_folder_path)
         logging.info(f"File transcribed: {file}, Status: {status}")
         
-        self.current_file_index += 1
-        self.start_next_transcription()
+        # Force cleanup. This does not stop the overall process, just the current file, to cleanup GPU memory
+        self.transcription_manager.stop_transcription()
+        
+        if self.is_stopping and status == "Stopped":
+            self.show_stop_message()
+        else:
+            self.current_file_index += 1
+            self.start_next_transcription()
             
     def show_stop_message(self):
         completed_count = sum(1 for file in self.file_queue if self.file_queue_component.get_file_status(file) == "Completed")
