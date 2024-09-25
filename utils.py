@@ -5,6 +5,7 @@ import appdirs
 import tempfile
 import torch
 import gc
+import pynvml
 
 APP_NAME = "VoxTranscript"
 APP_AUTHOR = None
@@ -76,14 +77,36 @@ def force_cuda_memory_release():
         logging.info("Forced CUDA memory release")
     else:
         logging.info("CUDA not available, skipping memory release")
-
+        
 def log_gpu_memory_usage():
     if torch.cuda.is_available():
         allocated = torch.cuda.memory_allocated() / 1024**2
         cached = torch.cuda.memory_reserved() / 1024**2
         logging.info(f"GPU Memory: Allocated: {allocated:.2f} MB, Cached: {cached:.2f} MB")
+        for i in range(torch.cuda.device_count()):
+            usage, cache, misc = gpu_memory_usage_all(i)
+            logging.info(f"GPU {i} Memory:")
+            logging.info(f"  Used: {usage:.3f} GB")
+            logging.info(f"  Cached: {cache:.3f} GB")
+            logging.info(f"  Misc: {misc:.3f} GB")
     else:
         logging.info("CUDA not available, cannot log GPU memory usage")
+
+def gpu_memory_usage_all(device=0):
+    usage = torch.cuda.memory_allocated(device) / 1024.0**3
+    reserved = torch.cuda.memory_reserved(device) / 1024.0**3
+    smi = gpu_memory_usage_smi(device)
+    return usage, reserved - usage, max(0, smi - reserved)
+
+def gpu_memory_usage_smi(device=0):
+    if isinstance(device, torch.device):
+        device = device.index
+    if isinstance(device, str) and device.startswith("cuda:"):
+        device = int(device[5:])
+    pynvml.nvmlInit()
+    handle = pynvml.nvmlDeviceGetHandleByIndex(device)
+    info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+    return info.used / 1024.0**3
 
 def resource_path(relative_path):
     """Get absolute path to resource, works for dev and for PyInstaller"""
