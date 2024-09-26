@@ -387,9 +387,13 @@ class WhisperGUI(QMainWindow):
         self.file_queue_component.open_transcription(file)
 
     def on_stop(self):
+        logging.info("Stop button clicked. Initiating stop process.")
         self.transcription_manager.stop_transcription()
+        logging.info(f"Current temporary files: {self.current_temp_files}")
+        self.transcription_manager.cleanup(self.current_temp_files)
         self.set_stopping_state(True)
         self.is_stopping = True
+        logging.info("Stop process initiated. Waiting for transcription to finish.")
 
     def set_stopping_state(self, is_stopping):
         if is_stopping:
@@ -454,6 +458,7 @@ class WhisperGUI(QMainWindow):
         # Set the transcription running state
         self.control_panel.set_transcription_running(True)
         
+        self.current_temp_files = []
         self.start_next_transcription()
         
         # Start the timer when transcription begins
@@ -465,18 +470,23 @@ class WhisperGUI(QMainWindow):
             config = self.create_transcription_config()
             current_file = list(self.file_queue.keys())[self.current_file_index]
             
-            if self.file_queue_component.get_file_status(current_file) == "Completed":
-                logging.info(f"File {current_file} has already been processed. Moving to next file.")
-                self.current_file_index += 1
-                self.start_next_transcription()
-                return
-
-            logging.info(f"Starting transcription for file: {current_file}")
+            # Prepare temporary files
+            prepared_audio, clip1, clip2 = self.prepare_temp_files(current_file)
+            self.current_temp_files = [prepared_audio, clip1, clip2]
             
-            self.transcription_manager.start_transcription(config, current_file, self.settings_manager)
+            logging.info(f"Starting transcription for file: {current_file}")
+            logging.info(f"Temporary files: {self.current_temp_files}")
+            
+            self.transcription_manager.start_transcription(config, current_file, self.settings_manager, self.current_temp_files)
         else:
             self.on_transcription_finished()
     
+    def prepare_temp_files(self, file):
+        output_dir = self.settings_manager.get_output_folder(file)
+        prepared_audio = os.path.join(output_dir, f"{os.path.splitext(os.path.basename(file))[0]}_prepared.wav")
+        clip1 = os.path.join(output_dir, f"{os.path.splitext(os.path.basename(file))[0]}_prepared_clip_0.33.wav")
+        clip2 = os.path.join(output_dir, f"{os.path.splitext(os.path.basename(file))[0]}_prepared_clip_0.67.wav")
+        return prepared_audio, clip1, clip2
     
     def on_file_transcribed(self, file, success, save_paths, status, file_info, log_file_path, log_folder_path):
         # Use QMetaObject.invokeMethod to ensure this runs on the main thread

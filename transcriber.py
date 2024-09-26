@@ -81,7 +81,7 @@ def setup_logging():
     console_handler.setFormatter(formatter)
     logging.getLogger('').addHandler(console_handler)
 
-def run_transcription(config, file, settings_manager, queue, stop_event):
+def run_transcription(config, file, settings_manager, queue, stop_event, temp_files):
     setup_logging()
     log_file_path = get_log_file_path()
     log_folder_path = os.path.dirname(log_file_path)
@@ -90,11 +90,7 @@ def run_transcription(config, file, settings_manager, queue, stop_event):
     is_stopped = False
     current_stage = 0
     total_stages = calculate_total_stages(config, settings_manager)
-    log_file_path = logging.getLoggerClass().root.handlers[0].baseFilename
-    log_folder_path = os.path.dirname(log_file_path)
-    prepared_audio = None
-    clip1 = None
-    clip2 = None
+    prepared_audio, clip1, clip2 = temp_files
     detected_language = None
 
     if is_completed:
@@ -768,11 +764,12 @@ def get_speaker_info(result, config):
         }
 
 def cleanup(prepared_audio=None, clip1=None, clip2=None):
+    logging.info(f"Transcriber: Starting cleanup process for files: {prepared_audio}, {clip1}, {clip2}")
     sleep_preventer.allow_sleep()
     delete_model()
     clear_gpu_memory()
     cleanup_temp_files(prepared_audio, clip1, clip2)
-    logging.info(f"Transcription process finished")
+    logging.info("Transcriber: Cleanup process completed")
 
 def delete_model():
     if 'transcriber' in globals():
@@ -800,9 +797,11 @@ def cleanup_temp_files(prepared_audio=None, clip1=None, clip2=None):
         if file and os.path.exists(file):
             try:
                 os.remove(file)
-                logging.info(f"Removed temporary file: {file}")
+                logging.info(f"Transcriber: Removed temporary file: {file}")
             except Exception as e:
-                logging.error(f"Error removing temporary file {file}: {str(e)}")
+                logging.error(f"Transcriber: Error removing temporary file {file}: {str(e)}")
+        else:
+            logging.info(f"Transcriber: Temporary file not found or already removed: {file}")
 
 def process_transcription_results(result, transcript, speakers):
     speaker_labels = generate_speaker_labels(result['segments'])
