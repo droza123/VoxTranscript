@@ -380,10 +380,6 @@ class WhisperGUI(QMainWindow):
             # Enable the button if there are files in the queue
             self.control_panel.set_clear_queue_stop_button_enabled(bool(self.file_queue))
 
-    async def check_ollama(self):
-        ollama = OllamaIntegration()
-        return await ollama.is_ollama_available()
-
     def start_transcription(self):
         if not self.file_queue:
             QMessageBox.warning(self, "Warning", "Please select files first.")
@@ -394,14 +390,6 @@ class WhisperGUI(QMainWindow):
         if not selected_formats:
             QMessageBox.warning(self, "Warning", "Please select at least one output format.")
             return
-        
-        # Check if Ollama is running if auto-summarization is enabled
-        if self.settings_manager.get('auto_summarize', False):
-            ollama_running = asyncio.run(self.check_ollama())
-            if not ollama_running:
-                QMessageBox.warning(self, "Ollama Not Running", 
-                                    "Ollama is not running. Please start Ollama and select a model, or disable the auto-summarize option.")
-                return
         
         # Check if custom output folder exists (if enabled)
         if self.control_panel.is_custom_output_folder_enabled():

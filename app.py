@@ -51,8 +51,16 @@ def initialize_ffmpeg():
     logging.info(f"FFMPEG initialized at: {ffmpeg_path}")
     return ffmpeg_path
 
+def exception_hook(exc_type, exc_value, exc_traceback):
+    logging.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+    sys.__excepthook__(exc_type, exc_value, exc_traceback)
+
 def main():
     setup_logging()
+    
+    # Set up the global exception hook
+    sys.excepthook = exception_hook
+    
     ffmpeg_path = initialize_ffmpeg()
     
     # Set environment variables
