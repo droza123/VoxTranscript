@@ -4,10 +4,8 @@ import os
 import logging
 from PyQt6.QtWidgets import QMainWindow, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QMessageBox, QFrame, QApplication
 from PyQt6.QtGui import QIcon, QDesktopServices
-from PyQt6.QtCore import Qt, QUrl, QTimer
+from PyQt6.QtCore import Qt, QUrl, QTimer, QMetaObject, Q_ARG
 import importlib
-import asyncio
-from ollama_integration import OllamaIntegration
 import gui.components
 importlib.reload(gui.components)
 from gui.components import ControlPanel, FileQueueComponent
@@ -233,6 +231,38 @@ class WhisperGUI(QMainWindow):
         logging.info("Saving UI settings")
         self.control_panel.save_settings()
 
+    def update_existing_transcription_check(self):
+        for file in list(self.file_queue.keys()):
+            if self.check_existing_transcription(file):
+                self.remove_file_from_queue(file)
+        self.file_queue_component.update_overall_progress()
+
+    def create_transcription_config(self):
+        language = self.control_panel.get_selected_language()
+        language_code = LANGUAGE_MAP.get(language, None)
+        speaker_count = self.control_panel.get_speaker_count()
+        return TranscriptionConfig(
+            whisper_model_name=self.control_panel.get_selected_model(),
+            whisper_download_root=FASTER_WHISPER_PATH,
+            device="cuda" if self.control_panel.is_gpu_enabled() and torch.cuda.is_available() else "cpu",
+            compute_type="float16" if self.control_panel.is_gpu_enabled() and torch.cuda.is_available() else "int8",
+            diarize=self.control_panel.is_diarization_enabled(),
+            pyannote_config_path=PYANNOTE_CONFIG_PATH,
+            batch_size=4,
+            align_model_dir=ALIGN_MODEL_DIR,
+            vad_model_fp=VAD_MODEL_FP,
+            language=language_code,
+            min_speakers=speaker_count,
+            max_speakers=speaker_count,
+            output_format="txt",
+            verbose=True,
+            task="transcribe",
+            print_progress=True,
+            save_voice_recognition=self.control_panel.is_voice_recognition_enabled(),
+            auto_summarize=self.control_panel.is_auto_summarize_enabled()
+            # ... (any other parameters your TranscriptionConfig expects)
+        )
+        
     def add_files_to_queue(self, files):
         logging.info(f"Adding files to queue: {files}")
         if files:
@@ -418,51 +448,7 @@ class WhisperGUI(QMainWindow):
         # Start the timer when transcription begins
         self.output_timer.start(100)  # Check every 100ms
 
-    def check_transcription_output(self):
-        output = self.transcription_manager.get_output()
-        if output is not None:
-            message_type, *args = output
-            if message_type == 'progress':
-                self.update_progress(*args)
-            elif message_type == 'file_transcribed':
-                self.on_file_transcribed(*args)
-                self.current_file_index += 1
-                self.start_next_transcription()
-            elif message_type == 'error':
-                self.on_error(*args)
-        # If output is None, do nothing and wait for the next timer tick
-
-    def check_worker_queue(self):
-        try:
-            while not self.worker_queue.empty():
-                message = self.worker_queue.get_nowait()
-                if message[0] == 'progress':
-                    self.update_progress(*message[1:])
-                elif message[0] == 'file_transcribed':
-                    self.on_file_transcribed(*message[1:])
-                elif message[0] == 'error':
-                    self.on_error(message[1])
-                elif message[0] == 'ollama_not_running':
-                    self.handle_ollama_not_running()
-        except Exception as e:
-            logging.error(f"Error processing worker queue: {str(e)}")
-
-    def set_transcription_running_state(self, is_running):
-        self.control_panel.set_transcription_running(is_running)
-        if is_running:
-            self.control_panel.clear_queue_stop_button.clicked.disconnect()
-            self.control_panel.clear_queue_stop_button.clicked.connect(self.on_stop)
-        else:
-            self.control_panel.clear_queue_stop_button.clicked.disconnect()
-            self.control_panel.clear_queue_stop_button.clicked.connect(self.clear_queue)
-
-    def get_next_uncompleted_file_index(self):
-        for index, file in enumerate(self.file_queue):
-            status = self.file_queue_component.get_file_status(file)
-            if status != "Completed":
-                return index
-        return len(self.file_queue)
-            
+                
     def start_next_transcription(self):
         if self.current_file_index < len(self.file_queue) and not self.is_stopping:
             config = self.create_transcription_config()
@@ -480,91 +466,18 @@ class WhisperGUI(QMainWindow):
         else:
             self.on_transcription_finished()
     
-    def handle_ollama_not_running(self):
-        QMessageBox.warning(self, "Ollama Not Running", 
-                            "Ollama is not running. Please start Ollama and select a model, or disable the auto-summarize option.")
-        self.reset_transcription_state()
-        self.control_panel.auto_summarize_toggle.setChecked(False)
-
-    def update_existing_transcription_check(self):
-        for file in list(self.file_queue.keys()):
-            if self.check_existing_transcription(file):
-                self.remove_file_from_queue(file)
-        self.file_queue_component.update_overall_progress()
-
-    def create_transcription_config(self):
-        language = self.control_panel.get_selected_language()
-        language_code = LANGUAGE_MAP.get(language, None)
-        speaker_count = self.control_panel.get_speaker_count()
-        return TranscriptionConfig(
-            whisper_model_name=self.control_panel.get_selected_model(),
-            whisper_download_root=FASTER_WHISPER_PATH,
-            device="cuda" if self.control_panel.is_gpu_enabled() and torch.cuda.is_available() else "cpu",
-            compute_type="float16" if self.control_panel.is_gpu_enabled() and torch.cuda.is_available() else "int8",
-            diarize=self.control_panel.is_diarization_enabled(),
-            pyannote_config_path=PYANNOTE_CONFIG_PATH,
-            batch_size=4,
-            align_model_dir=ALIGN_MODEL_DIR,
-            vad_model_fp=VAD_MODEL_FP,
-            language=language_code,
-            min_speakers=speaker_count,
-            max_speakers=speaker_count,
-            output_format="txt",
-            verbose=True,
-            task="transcribe",
-            print_progress=True,
-            save_voice_recognition=self.control_panel.is_voice_recognition_enabled(),
-            auto_summarize=self.control_panel.is_auto_summarize_enabled()
-            # ... (any other parameters your TranscriptionConfig expects)
-        )
-
-    def on_error(self, error_message):
-        logging.error(f"Transcription error: {error_message}")
-        
-        # Get the full traceback
-        import traceback
-        full_traceback = traceback.format_exc()
-        logging.error(f"Full traceback:\n{full_traceback}")
-        
-        # Show a more detailed error message to the user
-        error_dialog = QMessageBox(self)
-        error_dialog.setIcon(QMessageBox.Icon.Critical)
-        error_dialog.setText("An error occurred during transcription.")
-        error_dialog.setInformativeText(error_message)
-        error_dialog.setDetailedText(full_traceback)
-        error_dialog.setWindowTitle("Transcription Error")
-        error_dialog.exec()
-
-        # Handle the error (e.g., move to the next file or stop the process)
-        self.handle_transcription_error()
-    
-    def handle_transcription_error(self):
-        # Implement error handling logic here
-        # For example, you might want to:
-        # 1. Move to the next file in the queue
-        # 2. Update the status of the current file
-        # 3. If it's a critical error, stop the entire process
-        pass
-
-    def update_progress(self, file, status, current_stage, total_stages, stage_complete):
-        self.file_queue_component.update_file_progress(file, status, current_stage, total_stages, stage_complete)
-        
-        # Calculate overall progress
-        total_files = len(self.file_queue)
-        completed_files = sum(1 for f in self.file_queue if self.file_queue_component.get_file_status(f) == "Completed")
-        
-        # Only count the current stage if it's complete
-        current_file_progress = (current_stage - 1 + int(stage_complete)) / total_stages
-        
-        overall_progress = min(((completed_files + current_file_progress) / total_files) * 100, 100)
-        self.file_queue_component.update_overall_progress(overall_progress)
-
-        # Log progress update only when a stage is complete
-        if stage_complete:
-            logging.info(f"Overall progress updated: {overall_progress:.2f}%")
     
     def on_file_transcribed(self, file, success, save_paths, status, file_info, log_file_path, log_folder_path):
-        self.file_queue_component.update_file_status(file, success, save_paths, status, log_file_path, log_folder_path)
+        # Use QMetaObject.invokeMethod to ensure this runs on the main thread
+        QMetaObject.invokeMethod(self.file_queue_component, "update_file_status",
+                                 Qt.ConnectionType.QueuedConnection,
+                                 Q_ARG(str, file),
+                                 Q_ARG(bool, success),
+                                 Q_ARG(dict, save_paths),
+                                 Q_ARG(str, status),
+                                 Q_ARG(str, log_file_path),
+                                 Q_ARG(str, log_folder_path))
+        
         logging.info(f"File transcribed: {file}, Status: {status}")
         
         # Force cleanup. This does not stop the overall process, just the current file, to cleanup GPU memory
@@ -575,22 +488,7 @@ class WhisperGUI(QMainWindow):
         else:
             self.current_file_index += 1
             self.start_next_transcription()
-            
-    def show_stop_message(self):
-        completed_count = sum(1 for file in self.file_queue if self.file_queue_component.get_file_status(file) == "Completed")
-        total_count = len(self.file_queue)
-        remaining_count = total_count - completed_count
-
-        message = f"The transcription process has been stopped.\n\n"
-        message += f"Files completed: {completed_count} out of {total_count}\n"
-        if remaining_count > 0:
-            message += f"There are {remaining_count} file(s) remaining.\n"
-            message += "You can press the Start button to resume transcription from where it left off."
-
-        QMessageBox.information(self, "Transcription Stopped", message)
-        
-        self.reset_transcription_state()
-
+    
     def on_worker_finished(self):
         logging.info(f"Worker finished for file index: {self.current_file_index}")
         if self.is_stopping:
@@ -663,6 +561,115 @@ class WhisperGUI(QMainWindow):
         
         # Reset stopping state
         self.is_stopping = False
+        
+    def check_transcription_output(self):
+        output = self.transcription_manager.get_output()
+        if output is not None:
+            message_type, *args = output
+            if message_type == 'progress':
+                self.update_progress(*args)
+            elif message_type == 'file_transcribed':
+                self.on_file_transcribed(*args)
+            elif message_type == 'error':
+                self.on_error(*args)
+        # If output is None, do nothing and wait for the next timer tick
+
+    def check_worker_queue(self):
+        try:
+            while not self.worker_queue.empty():
+                message = self.worker_queue.get_nowait()
+                if message[0] == 'progress':
+                    self.update_progress(*message[1:])
+                elif message[0] == 'file_transcribed':
+                    self.on_file_transcribed(*message[1:])
+                elif message[0] == 'error':
+                    self.on_error(message[1])
+                elif message[0] == 'ollama_not_running':
+                    self.handle_ollama_not_running()
+        except Exception as e:
+            logging.error(f"Error processing worker queue: {str(e)}")
+
+    def set_transcription_running_state(self, is_running):
+        self.control_panel.set_transcription_running(is_running)
+        if is_running:
+            self.control_panel.clear_queue_stop_button.clicked.disconnect()
+            self.control_panel.clear_queue_stop_button.clicked.connect(self.on_stop)
+        else:
+            self.control_panel.clear_queue_stop_button.clicked.disconnect()
+            self.control_panel.clear_queue_stop_button.clicked.connect(self.clear_queue)
+
+    def get_next_uncompleted_file_index(self):
+        for index, file in enumerate(self.file_queue):
+            status = self.file_queue_component.get_file_status(file)
+            if status != "Completed":
+                return index
+        return len(self.file_queue)
+    
+    def handle_ollama_not_running(self):
+        QMessageBox.warning(self, "Ollama Not Running", 
+                            "Ollama is not running. Please start Ollama and select a model, or disable the auto-summarize option.")
+        self.reset_transcription_state()
+        self.control_panel.auto_summarize_toggle.setChecked(False)
+
+    def on_error(self, error_message):
+        logging.error(f"Transcription error: {error_message}")
+        
+        # Get the full traceback
+        import traceback
+        full_traceback = traceback.format_exc()
+        logging.error(f"Full traceback:\n{full_traceback}")
+        
+        # Show a more detailed error message to the user
+        error_dialog = QMessageBox(self)
+        error_dialog.setIcon(QMessageBox.Icon.Critical)
+        error_dialog.setText("An error occurred during transcription.")
+        error_dialog.setInformativeText(error_message)
+        error_dialog.setDetailedText(full_traceback)
+        error_dialog.setWindowTitle("Transcription Error")
+        error_dialog.exec()
+
+        # Handle the error (e.g., move to the next file or stop the process)
+        self.handle_transcription_error()
+    
+    def handle_transcription_error(self):
+        # Implement error handling logic here
+        # For example, you might want to:
+        # 1. Move to the next file in the queue
+        # 2. Update the status of the current file
+        # 3. If it's a critical error, stop the entire process
+        pass
+
+    def update_progress(self, file, status, current_stage, total_stages, stage_complete):
+        self.file_queue_component.update_file_progress(file, status, current_stage, total_stages, stage_complete)
+        
+        # Calculate overall progress
+        total_files = len(self.file_queue)
+        completed_files = sum(1 for f in self.file_queue if self.file_queue_component.get_file_status(f) == "Completed")
+        
+        # Only count the current stage if it's complete
+        current_file_progress = (current_stage - 1 + int(stage_complete)) / total_stages
+        
+        overall_progress = min(((completed_files + current_file_progress) / total_files) * 100, 100)
+        self.file_queue_component.update_overall_progress(overall_progress)
+
+        # Log progress update only when a stage is complete
+        if stage_complete:
+            logging.info(f"Overall progress updated: {overall_progress:.2f}%")
+            
+    def show_stop_message(self):
+        completed_count = sum(1 for file in self.file_queue if self.file_queue_component.get_file_status(file) == "Completed")
+        total_count = len(self.file_queue)
+        remaining_count = total_count - completed_count
+
+        message = f"The transcription process has been stopped.\n\n"
+        message += f"Files completed: {completed_count} out of {total_count}\n"
+        if remaining_count > 0:
+            message += f"There are {remaining_count} file(s) remaining.\n"
+            message += "You can press the Start button to resume transcription from where it left off."
+
+        QMessageBox.information(self, "Transcription Stopped", message)
+        
+        self.reset_transcription_state()
     
     def generate_summary_report(self, incomplete_files, failed_files):
         log_dir = os.path.dirname(logging.getLoggerClass().root.handlers[0].baseFilename)

@@ -1547,6 +1547,7 @@ class FileQueueComponent(QWidget):
             self.file_cards[file].progress_bar.setValue(0)
         self.update_overall_progress()
 
+    @pyqtSlot(str, bool, dict, str, str, str)
     def update_file_status(self, file, success, save_paths, status, log_file_path, log_folder_path):
         if file in self.file_cards:
             previous_stage = self.file_cards[file].current_stage
