@@ -1304,11 +1304,12 @@ class FileCardWidget(QWidget):
             self.set_icon_enabled(self.open_file_button, True)
             self.set_icon_enabled(self.open_folder_button, True)
             self.set_icon_enabled(self.remove_button, True)
+        elif status == "Stopped":
+            self.set_icon_enabled(self.open_file_button, False)
+            self.set_icon_enabled(self.open_folder_button, True)
+            self.set_icon_enabled(self.remove_button, True)
 
-        if status == "Stopped":
-            self.current_stage = 0
-            self.progress_bar.setValue(0)
-        elif status == "Failed":
+        if status == "Failed":
             self.progress_bar.setValue(100)
             self.progress_bar.setStyleSheet("""
                 QProgressBar {
@@ -1327,7 +1328,8 @@ class FileCardWidget(QWidget):
                     border: 2px solid #e74c3c;
                 }
             """)
-        elif stage_complete:
+        elif status != "Stopped" and stage_complete:
+            # Only update progress if not stopped and stage is complete
             progress = int((self.current_stage / self.total_stages) * 100)
             self.progress_bar.setValue(progress)
     
@@ -1542,17 +1544,32 @@ class FileQueueComponent(QWidget):
     
     def reset_file_progress(self, file):
         if file in self.file_cards:
-            self.completed_stages -= self.file_cards[file].current_stage
-            self.file_cards[file].update_status("Stopped", 0, self.file_cards[file].total_stages, True)
-            self.file_cards[file].progress_bar.setValue(0)
+            # Update status to Stopped without changing the progress
+            self.file_cards[file].update_status("Stopped", 
+                                                self.file_cards[file].current_stage, 
+                                                self.file_cards[file].total_stages, 
+                                                False)  # Set stage_complete to False
         self.update_overall_progress()
 
     @pyqtSlot(str, bool, dict, str, str, str)
     def update_file_status(self, file, success, save_paths, status, log_file_path, log_folder_path):
         if file in self.file_cards:
             previous_stage = self.file_cards[file].current_stage
-            self.file_cards[file].update_status(status, self.file_cards[file].total_stages, self.file_cards[file].total_stages, True, save_paths, log_file_path, log_folder_path)
-            self.completed_stages += (self.file_cards[file].total_stages - previous_stage)
+            self.file_cards[file].update_status(status, 
+                                                self.file_cards[file].total_stages, 
+                                                self.file_cards[file].total_stages, 
+                                                True, 
+                                                save_paths, 
+                                                log_file_path, 
+                                                log_folder_path)
+            if status != "Stopped":
+                self.completed_stages += (self.file_cards[file].total_stages - previous_stage)
+        self.update_overall_progress()
+
+    def reset_queue(self):
+        for file, card in self.file_cards.items():
+            if card.status_label.text() == "Status: Stopped":
+                card.reset_appearance()
         self.update_overall_progress()
 
     def get_file_status(self, file):

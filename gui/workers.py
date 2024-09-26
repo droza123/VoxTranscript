@@ -1,4 +1,5 @@
 import os
+import threading
 from PyQt6.QtCore import QThread, pyqtSignal
 from transcriber import run_transcription
 from queue import Empty
@@ -17,9 +18,10 @@ class TranscriptionWorker(QThread):
         self.settings_manager = settings_manager
         self.queue = queue
         self.is_stopped = False
+        self.stop_event = threading.Event()
 
     def run(self):
-        run_transcription(self.config, self.file, self.settings_manager, self.queue)
+        run_transcription(self.config, self.file, self.settings_manager, self.queue, self.stop_event)
 
         while not self.is_stopped:
             try:
@@ -44,4 +46,5 @@ class TranscriptionWorker(QThread):
 
     def stop(self):
         self.is_stopped = True
+        self.stop_event.set()
         self.stop_finished.emit()

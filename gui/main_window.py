@@ -409,6 +409,19 @@ class WhisperGUI(QMainWindow):
             
             # Enable the button if there are files in the queue
             self.control_panel.set_clear_queue_stop_button_enabled(bool(self.file_queue))
+            
+            # Enable the Start button
+            self.control_panel.start_button.setEnabled(True)
+            
+            # Reset the stopping flag
+            self.is_stopping = False
+            
+            # Update the status of the stopped file
+            current_file = list(self.file_queue.keys())[self.current_file_index]
+            self.update_stopped_file_status(current_file)
+            
+            # Show the stop message
+            self.show_stop_message()
 
     def start_transcription(self):
         if not self.file_queue:
@@ -443,6 +456,9 @@ class WhisperGUI(QMainWindow):
         
         self.set_ui_enabled(False)
         self.current_file_index = self.get_next_uncompleted_file_index()
+        
+        # Reset the queue (change Stopped to Queued and reset progress bars)
+        self.file_queue_component.reset_queue()
         
         # Set the transcription running state
         self.control_panel.set_transcription_running(True)
@@ -487,8 +503,8 @@ class WhisperGUI(QMainWindow):
         # Force cleanup. This does not stop the overall process, just the current file, to cleanup GPU memory
         self.transcription_manager.stop_transcription()
         
-        if self.is_stopping and status == "Stopped":
-            self.show_stop_message()
+        if self.is_stopping:
+            self.update_stopped_file_status(file)
         else:
             self.current_file_index += 1
             if self.current_file_index < len(self.file_queue):
@@ -496,6 +512,10 @@ class WhisperGUI(QMainWindow):
             else:
                 # All files have been processed, trigger the finished event
                 QTimer.singleShot(100, self.on_transcription_finished)
+    
+    def update_stopped_file_status(self, file):
+        self.file_queue_component.update_file_status(file, False, {}, "Stopped", "", "")
+        self.file_queue_component.reset_file_progress(file)
     
     def on_worker_finished(self):
         logging.info(f"Worker finished for file index: {self.current_file_index}")
@@ -581,7 +601,11 @@ class WhisperGUI(QMainWindow):
                 self.on_file_transcribed(*args)
             elif message_type == 'error':
                 self.on_error(*args)
-        # If output is None, do nothing and wait for the next timer tick
+        
+        # Check if the process has stopped
+        if self.is_stopping and not self.transcription_manager.process.is_alive():
+            self.set_stopping_state(False)
+            self.reset_transcription_state()
 
     def check_worker_queue(self):
         try:
