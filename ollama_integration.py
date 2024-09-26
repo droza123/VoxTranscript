@@ -187,7 +187,7 @@ class OllamaIntegration:
         try:
             response = await asyncio.wait_for(
                 asyncio.to_thread(requests.post, self.generate_endpoint, json=payload),
-                timeout=10800  # 180-minute timeout
+                timeout=3600  # 60-minute timeout
             )
             response.raise_for_status()
             result = response.json()

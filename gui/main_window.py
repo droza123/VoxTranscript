@@ -443,6 +443,10 @@ class WhisperGUI(QMainWindow):
         
         self.set_ui_enabled(False)
         self.current_file_index = self.get_next_uncompleted_file_index()
+        
+        # Set the transcription running state
+        self.control_panel.set_transcription_running(True)
+        
         self.start_next_transcription()
         
         # Start the timer when transcription begins
@@ -470,13 +474,13 @@ class WhisperGUI(QMainWindow):
     def on_file_transcribed(self, file, success, save_paths, status, file_info, log_file_path, log_folder_path):
         # Use QMetaObject.invokeMethod to ensure this runs on the main thread
         QMetaObject.invokeMethod(self.file_queue_component, "update_file_status",
-                                 Qt.ConnectionType.QueuedConnection,
-                                 Q_ARG(str, file),
-                                 Q_ARG(bool, success),
-                                 Q_ARG(dict, save_paths),
-                                 Q_ARG(str, status),
-                                 Q_ARG(str, log_file_path),
-                                 Q_ARG(str, log_folder_path))
+                                Qt.ConnectionType.QueuedConnection,
+                                Q_ARG(str, file),
+                                Q_ARG(bool, success),
+                                Q_ARG(dict, save_paths),
+                                Q_ARG(str, status),
+                                Q_ARG(str, log_file_path),
+                                Q_ARG(str, log_folder_path))
         
         logging.info(f"File transcribed: {file}, Status: {status}")
         
@@ -487,7 +491,11 @@ class WhisperGUI(QMainWindow):
             self.show_stop_message()
         else:
             self.current_file_index += 1
-            self.start_next_transcription()
+            if self.current_file_index < len(self.file_queue):
+                self.start_next_transcription()
+            else:
+                # All files have been processed, trigger the finished event
+                QTimer.singleShot(100, self.on_transcription_finished)
     
     def on_worker_finished(self):
         logging.info(f"Worker finished for file index: {self.current_file_index}")
@@ -514,24 +522,25 @@ class WhisperGUI(QMainWindow):
         # Stop the output checking timer
         self.output_timer.stop()
         
-        all_files_completed = all(self.file_queue_component.get_file_status(file) == "Completed" 
-                                for file in self.file_queue)
+        completed_files = [file for file in self.file_queue 
+                        if self.file_queue_component.get_file_status(file) == "Completed"]
+        failed_files = [file for file in self.file_queue 
+                        if self.file_queue_component.get_file_status(file) == "Failed"]
+        incomplete_files = [file for file in self.file_queue 
+                            if self.file_queue_component.get_file_status(file) not in ["Completed", "Failed"]]
 
-        if all_files_completed:
+        if len(completed_files) == len(self.file_queue):
             QMessageBox.information(self, "Transcription Complete", "All files have been processed successfully.")
         else:
-            incomplete_files = [file for file in self.file_queue 
-                                if self.file_queue_component.get_file_status(file) != "Completed"]
-            failed_files = [file for file in self.file_queue 
-                            if self.file_queue_component.get_file_status(file) == "Failed"]
-            
             self.generate_summary_report(incomplete_files, failed_files)
             
-            message = f"Transcription finished, but {len(incomplete_files)} files were not completed.\n"
-            message += f"{len(failed_files)} files failed.\n"
+            message = f"Transcription finished.\n"
+            message += f"Completed: {len(completed_files)}\n"
+            message += f"Failed: {len(failed_files)}\n"
+            message += f"Incomplete: {len(incomplete_files)}\n"
             message += "A summary report has been generated."
             
-            msg_box = QMessageBox(QMessageBox.Icon.Warning, "Transcription Incomplete", message, parent=self)
+            msg_box = QMessageBox(QMessageBox.Icon.Warning, "Transcription Results", message, parent=self)
             
             view_report_button = msg_box.addButton("View Report", QMessageBox.ButtonRole.ActionRole)
             open_log_folder_button = msg_box.addButton("Open Log Folder", QMessageBox.ButtonRole.ActionRole)
