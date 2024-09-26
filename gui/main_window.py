@@ -70,7 +70,7 @@ class WhisperGUI(QMainWindow):
             self.clear_queue,
             self.settings_manager,
             self.check_existing_transcriptions,
-            self.file_queue  # Pass the file_queue here
+            self.file_queue
         )
         self.control_panel.setMinimumWidth(350)
         self.control_panel.setMaximumWidth(350)
@@ -398,15 +398,6 @@ class WhisperGUI(QMainWindow):
         else:
             self.set_transcription_running_state(False)
             
-            # Explicitly set the Clear Queue icon and text
-            trash_icon = self.control_panel.create_button("", "trash-2").icon()
-            self.control_panel.clear_queue_stop_button.setIcon(trash_icon)
-            self.control_panel.clear_queue_stop_button.setText("Clear Queue")
-            
-            # Reconnect the clear queue functionality
-            self.control_panel.clear_queue_stop_button.clicked.disconnect()
-            self.control_panel.clear_queue_stop_button.clicked.connect(self.clear_queue)
-            
             # Enable the button if there are files in the queue
             self.control_panel.set_clear_queue_stop_button_enabled(bool(self.file_queue))
             
@@ -418,7 +409,7 @@ class WhisperGUI(QMainWindow):
             
             # Update the status of the stopped file
             current_file = list(self.file_queue.keys())[self.current_file_index]
-            self.update_stopped_file_status(current_file)
+            self.file_queue_component.reset_file_progress(current_file)
             
             # Show the stop message
             self.show_stop_message()
@@ -624,12 +615,11 @@ class WhisperGUI(QMainWindow):
 
     def set_transcription_running_state(self, is_running):
         self.control_panel.set_transcription_running(is_running)
+        self.control_panel.set_clear_queue_stop_button_enabled(True)
         if is_running:
-            self.control_panel.clear_queue_stop_button.clicked.disconnect()
-            self.control_panel.clear_queue_stop_button.clicked.connect(self.on_stop)
+            self.control_panel.start_button.setEnabled(False)
         else:
-            self.control_panel.clear_queue_stop_button.clicked.disconnect()
-            self.control_panel.clear_queue_stop_button.clicked.connect(self.clear_queue)
+            self.control_panel.start_button.setEnabled(bool(self.file_queue))
 
     def get_next_uncompleted_file_index(self):
         for index, file in enumerate(self.file_queue):

@@ -427,7 +427,6 @@ class ControlPanel(QWidget):
         self.select_files_button.clicked.connect(self.select_files)
         self.select_folder_button.clicked.connect(self.select_folder)
         self.start_button.clicked.connect(self.start_callback)
-        self.clear_queue_stop_button.clicked.connect(self.on_clear_queue_stop_button_clicked)
         
         # Connect to on_setting_changed
         self.model_combo.currentIndexChanged.connect(self.on_setting_changed)
@@ -566,10 +565,22 @@ class ControlPanel(QWidget):
             self.clear_queue_stop_button.setText("Stop")
             stop_icon = self.create_button("", "stop-circle").icon()
             self.clear_queue_stop_button.setIcon(stop_icon)
+            try:
+                self.clear_queue_stop_button.clicked.disconnect()
+            except TypeError:
+                # No connections to disconnect, which is fine
+                pass
+            self.clear_queue_stop_button.clicked.connect(self.stop_callback)
         else:
             self.clear_queue_stop_button.setText("Clear Queue")
             trash_icon = self.create_button("", "trash-2").icon()
             self.clear_queue_stop_button.setIcon(trash_icon)
+            try:
+                self.clear_queue_stop_button.clicked.disconnect()
+            except TypeError:
+                # No connections to disconnect, which is fine
+                pass
+            self.clear_queue_stop_button.clicked.connect(self.clear_queue_callback)
 
     def set_clear_queue_stop_button_enabled(self, enabled):
         self.clear_queue_stop_button.setEnabled(enabled)
@@ -757,12 +768,6 @@ class ControlPanel(QWidget):
         index = self.model_combo.findText(model)
         if index >= 0:
             self.model_combo.setCurrentIndex(index)
-
-    def on_clear_queue_stop_button_clicked(self):
-        if self.clear_queue_stop_button.text() == "Stop":
-            self.stop_callback()
-        else:
-            self.clear_queue_callback()
 
     def get_selected_model(self):
         return self.model_combo.currentText().split()[0]  # Get first word
