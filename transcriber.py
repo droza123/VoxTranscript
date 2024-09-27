@@ -925,41 +925,6 @@ class TranscriptionConfig:
         self.pyannote_config_path = pyannote_config_path
         self.model_path = model_path
 
-class ProgressStream:
-    def __init__(self, callback):
-        self.callback = callback
-        self.buffer = ""
-
-    def write(self, text):
-        if text.startswith('Progress:'):
-            try:
-                # Extract the progress value as a string, including the '%' symbol
-                progress_text = text.split(':')[1].strip().rstrip('.')
-                if self.callback:
-                    try:
-                        self.callback(progress_text)
-                    except Exception as e:
-                        logging.error(f"ProgressStream callback failed: {str(e)}")
-                else:
-                    logging.warning("ProgressStream callback is None")
-            except Exception as e:
-                logging.error(f"ProgressStream unexpected error: {str(e)}")
-        
-        # Accumulate text in the buffer
-        self.buffer += text
-        
-        # If we have a complete line, log it and clear the buffer
-        if '\n' in self.buffer:
-            lines = self.buffer.split('\n')
-            for line in lines[:-1]:
-                logging.info(line)
-            self.buffer = lines[-1]
-
-    def flush(self):
-        if self.buffer:
-            logging.info(self.buffer)
-            self.buffer = ""
-
 class Transcriber:
     def __init__(self, config: TranscriptionConfig, settings_manager):
         self.config = config
@@ -985,9 +950,6 @@ class Transcriber:
             'tg', 'sd', 'gu', 'am', 'yi', 'lo', 'uz', 'fo', 'ht', 'ps', 'tk', 'nn', 'mt', 'sa', 'lb', 'my', 'bo', 'tl', 
             'mg', 'as', 'tt', 'haw', 'ln', 'ha', 'ba', 'jw', 'su', 'yue'
         ])
-
-    def set_progress_callback(self, callback):
-        self.progress_callback = callback
 
     def load_asr_model(self):
         with silent_subprocess():
@@ -1120,14 +1082,6 @@ class Transcriber:
                 # Extract the language code from the tuple
                 if isinstance(transcription_language, tuple):
                     transcription_language = transcription_language[0]
-                
-                # Set up the progress stream
-                progress_stream = ProgressStream(self.progress_callback)
-                original_stdout = sys.stdout
-                try:
-                    sys.stdout = progress_stream
-                except AttributeError:
-                    original_stdout = None
 
                 # Prepare the audio as a numpy array
                 audio_array = decode_audio(prepared_audio)
@@ -1140,13 +1094,6 @@ class Transcriber:
                     print_progress=True
                 )
 
-                # Clear the progress callback
-                self.set_progress_callback(None)
-        
-                # Restore stdout
-                if original_stdout is not None:
-                    sys.stdout = original_stdout
-
                 # Unload the model after transcription
                 self.unload_asr_model()
 
@@ -1157,20 +1104,6 @@ class Transcriber:
                 }
 
                 return [(result, prepared_audio, language_info)]
-
-    def process_progress_output(self, output):
-        try:
-            lines = output.split('\n')
-            for line in lines:
-                if line.startswith('Progress:'):
-                    try:
-                        progress = float(line.split(':')[1].strip().rstrip('%'))
-                        if self.progress_callback:
-                            self.progress_callback(progress)
-                    except (ValueError, IndexError):
-                        logging.warning(f"Failed to parse progress from line: {line}")
-        except Exception as e:
-            logging.error(f"Error processing progress output: {str(e)}")
 
     def align_transcriptions(self, transcriptions):
         with silent_subprocess():
