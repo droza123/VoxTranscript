@@ -4,7 +4,7 @@ import os
 import logging
 from PyQt6.QtWidgets import QMainWindow, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QMessageBox, QFrame, QApplication
 from PyQt6.QtGui import QIcon, QDesktopServices
-from PyQt6.QtCore import Qt, QUrl, QTimer, QMetaObject, Q_ARG
+from PyQt6.QtCore import Qt, QUrl, QTimer, QMetaObject, Q_ARG, QEventLoop
 import importlib
 import gui.components
 importlib.reload(gui.components)
@@ -439,9 +439,6 @@ class WhisperGUI(QMainWindow):
             # Update the status of the stopped file
             current_file = list(self.file_queue.keys())[self.current_file_index]
             self.file_queue_component.reset_file_progress(current_file)
-            
-            # Show the stop message
-            self.show_stop_message()
 
     def start_transcription(self):
         if not self.file_queue:
@@ -489,10 +486,45 @@ class WhisperGUI(QMainWindow):
         self.control_panel.set_transcription_running(True)
         
         self.current_temp_files = []
-        self.start_next_transcription()
-        
+
+        # Update the status of the first file immediately and force a GUI update
+        if self.current_file_index < len(self.file_queue):
+            current_file = list(self.file_queue.keys())[self.current_file_index]
+            self.file_queue_component.update_file_progress(current_file, "Preparing transcriber", 1, total_stages, False)
+            self.force_gui_update()
+
         # Start the timer when transcription begins
         self.output_timer.start(100)  # Check every 100ms
+
+        # Use QTimer to start the transcription process in the next event loop iteration
+        QTimer.singleShot(0, self.start_transcription_process)
+    
+    def start_transcription_process(self):
+        if self.current_file_index < len(self.file_queue) and not self.is_stopping:
+            config = self.create_transcription_config()
+            current_file = list(self.file_queue.keys())[self.current_file_index]
+            
+            # Calculate total stages
+            total_stages = calculate_total_stages(config, self.settings_manager)
+            
+            # Update status again and force GUI update
+            # self.force_gui_update()
+            
+            # Prepare temporary files
+            prepared_audio, clip1, clip2 = self.prepare_temp_files(current_file)
+            self.current_temp_files = [prepared_audio, clip1, clip2]
+            
+            logging.info(f"Starting transcription for file: {current_file}")
+            logging.info(f"Temporary files: {self.current_temp_files}")
+            
+            self.file_queue_component.update_file_progress(current_file, "Preparing transcriber", 1, total_stages, False)
+            self.transcription_manager.start_transcription(config, current_file, self.settings_manager, self.current_temp_files)
+        else:
+            self.on_transcription_finished()
+    
+    def force_gui_update(self):
+        # Force the GUI to update by processing all pending events
+        QApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 100)
 
                 
     def start_next_transcription(self):
@@ -503,8 +535,8 @@ class WhisperGUI(QMainWindow):
             # Calculate total stages
             total_stages = calculate_total_stages(config, self.settings_manager)
             
-            # Update status to "Initializing" immediately for the current file
-            self.file_queue_component.update_file_progress(current_file, "Initializing transcriber", 1, total_stages, False)
+            # Update status to "Preparing" immediately for the current file
+            self.file_queue_component.update_file_progress(current_file, "Preparing transcriber", 1, total_stages, False)
             
             # Prepare temporary files
             prepared_audio, clip1, clip2 = self.prepare_temp_files(current_file)

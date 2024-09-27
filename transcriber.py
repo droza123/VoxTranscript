@@ -89,7 +89,7 @@ def run_transcription(config, file, settings_manager, queue, stop_event, temp_fi
         transcriber = None
         is_completed = False
         is_stopped = False
-        current_stage = 0
+        current_stage = 1
         total_stages = calculate_total_stages(config, settings_manager)
         prepared_audio, clip1, clip2 = temp_files
         detected_language = None
@@ -100,19 +100,15 @@ def run_transcription(config, file, settings_manager, queue, stop_event, temp_fi
         logging.info(f"Temp files: {temp_files}")
 
         try:
-            queue.put(('progress', file, "Starting transcription", 0, total_stages, False))
-        except Exception as e:
-            logging.error(f"Error putting initial message in queue: {str(e)}", exc_info=True)
-
-        try:
             logging.info("Preventing sleep")
             sleep_preventer.prevent_sleep()
             
             # Initializing stage
             current_stage += 1
             logging.info(f"Stage {current_stage}/{total_stages}: Initializing transcriber")
-            queue.put(('progress', file, "Initializing transcriber", current_stage, total_stages, True))
+            queue.put(('progress', file, "Initializing transcriber", current_stage, total_stages, False))
             transcriber = Transcriber(config, settings_manager)
+            queue.put(('progress', file, "Initializing transcriber", current_stage, total_stages, True))
             logging.info("Transcriber initialized")
             
             # Audio preparation stage
@@ -143,7 +139,6 @@ def run_transcription(config, file, settings_manager, queue, stop_event, temp_fi
                 else:
                     logging.warning("Language detection clips not found, using full audio for detection")
                     detected_language = transcriber.detect_language(prepared_audio, prepared_audio)
-                queue.put(('progress', file, "Detecting language", current_stage, total_stages, True))
                 
                 # Delete the clips immediately after use
                 for clip in [clip1, clip2]:
@@ -153,6 +148,7 @@ def run_transcription(config, file, settings_manager, queue, stop_event, temp_fi
                             logging.info(f"Deleted clip: {clip}")
                         except Exception as e:
                             logging.error(f"Error deleting clip {clip}: {str(e)}", exc_info=True)
+                queue.put(('progress', file, "Detecting language", current_stage, total_stages, True))
             else:
                 detected_language = config.language
                 logging.info(f"Using specified language: {detected_language}")
@@ -192,7 +188,7 @@ def run_transcription(config, file, settings_manager, queue, stop_event, temp_fi
                 final_results, _, language_info = aligned_results[0]
 
             # Voice recognition stage (if enabled)
-            if config.save_voice_recognition and 'jsonl' in settings_manager.get('output_formats', []) and not is_stopped:
+            if config.save_voice_recognition and 'jsonl' in settings_manager.get('output_formats', []):
                 current_stage += 1
                 queue.put(('progress', file, "Calculating voice embeddings", current_stage, total_stages, False))
                 try:
@@ -219,10 +215,11 @@ def run_transcription(config, file, settings_manager, queue, stop_event, temp_fi
             queue.put(('progress', file, "Saving transcription files", current_stage, total_stages, False))
             file_info = get_file_info(file, prepared_audio)
             save_paths = save_transcription(file, prepared_audio, final_results, language_info, transcript, speakers, settings_manager, config, summary)
-            queue.put(('progress', file, "Saving transcription files", current_stage, total_stages, True))
 
             # File transcribed successfully
+            current_stage += 1
             logging.info("Transcription process completed successfully")
+            queue.put(('progress', file, "Completed", current_stage, total_stages, True))
             queue.put(('file_transcribed', file, True, save_paths, "Completed", file_info, log_file_path, log_folder_path))
             is_completed = True
 
@@ -243,7 +240,7 @@ def run_transcription(config, file, settings_manager, queue, stop_event, temp_fi
         queue.put(('error', f"Critical error in run_transcription: {str(e)}"))
 
 def calculate_total_stages(config, settings_manager):
-    stages = 5  # Base stages: initializing, preparation, transcription, alignment, and saving
+    stages = 7  # Base stages: preparation, initializing, audio preparation, transcription, alignment, saving, and completed
     if config.language is None or config.language == "Automatic":
         stages += 1  # Add language detection stage
     if config.diarize:
