@@ -319,6 +319,10 @@ class WhisperGUI(QMainWindow):
             self.file_queue_component.add_file_to_queue(normalized_file)
             logging.info(f"Added file to queue: {normalized_file}")
             
+            # Update the file card status
+            file_card = self.file_queue_component.file_cards[normalized_file]
+            file_card.update_status("Queued", 0, 4, False)
+            
             # Update the last directory used
             self.settings_manager.set('last_file_directory', os.path.dirname(normalized_file))
             
