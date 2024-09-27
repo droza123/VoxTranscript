@@ -60,13 +60,22 @@ class TranscriptionManager:
             return None
 
     def stop_transcription(self):
-        logging.info("TranscriptionManager: Stopping transcription.")
+        logging.info("TranscriptionManager: Closing the file process.")
         self.stop_event.set()
         if self.process and self.process.is_alive():
-            logging.info("TranscriptionManager: Waiting for process to terminate.")
+            logging.info("TranscriptionManager: Waiting for process to finish.")
             self.process.join(timeout=5)
             if self.process.is_alive():
                 logging.info("TranscriptionManager: Process did not terminate. Forcing termination.")
+                self.process.terminate()
+        logging.info("TranscriptionManager: File process closed.")
+    
+    def stop_transcription_button_pressed(self):
+        logging.info("TranscriptionManager: Stopping transcription.")
+        self.stop_event.set()
+        if self.process and self.process.is_alive():
+            if self.process.is_alive():
+                logging.info("TranscriptionManager: File process closed.")
                 self.process.terminate()
         logging.info("TranscriptionManager: Transcription stopped.")
 

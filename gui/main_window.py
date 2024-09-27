@@ -392,7 +392,7 @@ class WhisperGUI(QMainWindow):
 
     def on_stop(self):
         logging.info("Stop button clicked. Initiating stop process.")
-        self.transcription_manager.stop_transcription()
+        self.transcription_manager.stop_transcription_button_pressed()
         logging.info(f"Current temporary files: {self.current_temp_files}")
         self.transcription_manager.cleanup(self.current_temp_files)
         self.set_stopping_state(True)
@@ -690,19 +690,13 @@ class WhisperGUI(QMainWindow):
     def update_progress(self, file, status, current_stage, total_stages, stage_complete):
         self.file_queue_component.update_file_progress(file, status, current_stage, total_stages, stage_complete)
         
-        # Calculate overall progress
-        total_files = len(self.file_queue)
-        completed_files = sum(1 for f in self.file_queue if self.file_queue_component.get_file_status(f) == "Completed")
-        
-        # Only count the current stage if it's complete
-        current_file_progress = (current_stage - 1 + int(stage_complete)) / total_stages
-        
-        overall_progress = min(((completed_files + current_file_progress) / total_files) * 100, 100)
-        self.file_queue_component.update_overall_progress(overall_progress)
+        # We don't need to calculate overall_progress here
+        # The FileQueueComponent handles it internally
+        self.file_queue_component.update_overall_progress()
 
         # Log progress update only when a stage is complete
-        # if stage_complete:
-        logging.info(f"Overall progress updated: {overall_progress:.2f}%")
+        if stage_complete:
+            logging.info(f"File progress updated: {file}, Stage: {current_stage}/{total_stages}")
             
     def show_stop_message(self):
         completed_count = sum(1 for file in self.file_queue if self.file_queue_component.get_file_status(file) == "Completed")

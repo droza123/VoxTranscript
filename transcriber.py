@@ -103,12 +103,9 @@ def run_transcription(config, file, settings_manager, queue, stop_event, temp_fi
         sleep_preventer.prevent_sleep()
         
         # Initializing stage. The initial queue.put command is handled by the main_window.py
+        current_stage += 1
         transcriber = Transcriber(config, settings_manager)
         queue.put(('progress', file, "Initializing transcriber", current_stage, total_stages, True))
-        
-        if stop_event.is_set():
-            queue.put(('file_transcribed', file, False, {}, "Stopped", {}, log_file_path, log_folder_path))
-            return
         
         # Audio preparation stage
         current_stage += 1
@@ -121,10 +118,6 @@ def run_transcription(config, file, settings_manager, queue, stop_event, temp_fi
         except Exception as e:
             logging.error(f"Error in audio preparation for {file}: {str(e)}", exc_info=True)
             queue.put(('file_transcribed', file, False, {}, "Failed", {}, log_file_path, log_folder_path))
-            return
-
-        if stop_event.is_set():
-            queue.put(('file_transcribed', file, False, {}, "Stopped", {}, log_file_path, log_folder_path))
             return
         
         # Language detection stage (if needed)
@@ -140,10 +133,6 @@ def run_transcription(config, file, settings_manager, queue, stop_event, temp_fi
         else:
             detected_language = config.language
 
-        if stop_event.is_set():
-            queue.put(('file_transcribed', file, False, {}, "Stopped", {}, log_file_path, log_folder_path))
-            return
-
         # Transcription stage
         current_stage += 1
         queue.put(('progress', file, "Transcribing audio", current_stage, total_stages, False))
@@ -153,20 +142,12 @@ def run_transcription(config, file, settings_manager, queue, stop_event, temp_fi
             raise Exception("Transcriber is not initialized or process was stopped")
         queue.put(('progress', file, "Transcribing audio", current_stage, total_stages, True))
 
-        if stop_event.is_set():
-            queue.put(('file_transcribed', file, False, {}, "Stopped", {}, log_file_path, log_folder_path))
-            return
-
         # Alignment stage
         if not is_stopped:
             current_stage += 1
             queue.put(('progress', file, "Refining timestamps", current_stage, total_stages, False))
             aligned_results = transcriber.align_transcriptions(results)
             queue.put(('progress', file, "Refining timestamps", current_stage, total_stages, True))
-
-        if stop_event.is_set():
-            queue.put(('file_transcribed', file, False, {}, "Stopped", {}, log_file_path, log_folder_path))
-            return
 
         # Diarization stage (if enabled)
         if config.diarize and not is_stopped:
@@ -183,10 +164,6 @@ def run_transcription(config, file, settings_manager, queue, stop_event, temp_fi
         else:
             final_results, _, language_info = aligned_results[0]
 
-        if stop_event.is_set():
-            queue.put(('file_transcribed', file, False, {}, "Stopped", {}, log_file_path, log_folder_path))
-            return
-
         # Voice recognition stage (if enabled)
         if config.save_voice_recognition and 'jsonl' in settings_manager.get('output_formats', []) and not is_stopped:
             current_stage += 1
@@ -201,10 +178,6 @@ def run_transcription(config, file, settings_manager, queue, stop_event, temp_fi
         else:
             transcript, speakers = get_transcript_and_speakers(final_results, prepared_audio, skip_embeddings=True)
 
-        if stop_event.is_set():
-            queue.put(('file_transcribed', file, False, {}, "Stopped", {}, log_file_path, log_folder_path))
-            return
-
         # Summarization stage (if enabled)
         if settings_manager.get('auto_summarize', False) and not is_stopped:
             current_stage += 1
@@ -214,10 +187,6 @@ def run_transcription(config, file, settings_manager, queue, stop_event, temp_fi
         else:
             summary = None
 
-        if stop_event.is_set():
-            queue.put(('file_transcribed', file, False, {}, "Stopped", {}, log_file_path, log_folder_path))
-            return
-
         # Saving stage
         current_stage += 1
         queue.put(('progress', file, "Saving transcription files", current_stage, total_stages, False))
@@ -225,9 +194,9 @@ def run_transcription(config, file, settings_manager, queue, stop_event, temp_fi
         save_paths = save_transcription(file, prepared_audio, final_results, language_info, transcript, speakers, settings_manager, config, summary)
         queue.put(('progress', file, "Saving transcription files", current_stage, total_stages, True))
 
-        if not stop_event.is_set():
-            queue.put(('file_transcribed', file, True, save_paths, "Completed", file_info, log_file_path, log_folder_path))
-            is_completed = True
+        # File transcribed successfully
+        queue.put(('file_transcribed', file, True, save_paths, "Completed", file_info, log_file_path, log_folder_path))
+        is_completed = True
 
     except Exception as e:
         logging.error(f"Error transcribing {file}: {str(e)}", exc_info=True)

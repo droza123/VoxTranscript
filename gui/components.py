@@ -1547,6 +1547,8 @@ class FileQueueComponent(QWidget):
     def update_file_progress(self, file, status, current_stage, total_stages, stage_complete):
         if file in self.file_cards:
             self.file_cards[file].update_status(status, current_stage, total_stages, stage_complete)
+            # log the info
+            logging.info(f"File progress updated: {file}, Stage: {current_stage}/{total_stages}")
             if stage_complete:
                 self.current_file_progress = current_stage / total_stages
             self.update_overall_progress()
@@ -1596,8 +1598,10 @@ class FileQueueComponent(QWidget):
         self.current_file_progress = 0
         self.progress_bar.set_total_files(total, stages_per_file)
 
-    def update_overall_progress(self):
-        if self.total_files > 0:
+    def update_overall_progress(self, external_progress=None):
+        if external_progress is not None:
+            overall_progress = external_progress
+        elif self.total_files > 0:
             completed_progress = (self.completed_files / self.total_files) * 100
             current_file_contribution = (self.current_file_progress / self.total_files) * 100
             overall_progress = completed_progress + current_file_contribution
