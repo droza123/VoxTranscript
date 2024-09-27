@@ -1412,6 +1412,10 @@ class FileQueueComponent(QWidget):
         self.main_layout.setSpacing(0)
         self.total_stages = 0
         self.completed_stages = 0
+        self.current_file_stages = 0
+        self.total_files = 0
+        self.completed_files = 0
+        self.current_file_progress = 0
         
         # Queue area
         self.queue_widget = QWidget()
@@ -1544,8 +1548,8 @@ class FileQueueComponent(QWidget):
         if file in self.file_cards:
             self.file_cards[file].update_status(status, current_stage, total_stages, stage_complete)
             if stage_complete:
-                self.completed_stages += 1
-                self.update_overall_progress()
+                self.current_file_progress = current_stage / total_stages
+            self.update_overall_progress()
     
     def reset_file_progress(self, file):
         if file in self.file_cards:
@@ -1559,16 +1563,18 @@ class FileQueueComponent(QWidget):
     @pyqtSlot(str, bool, dict, str, str, str)
     def update_file_status(self, file, success, save_paths, status, log_file_path, log_folder_path):
         if file in self.file_cards:
-            previous_stage = self.file_cards[file].current_stage
             self.file_cards[file].update_status(status, 
-                                                self.file_cards[file].total_stages, 
-                                                self.file_cards[file].total_stages, 
+                                                self.current_file_stages, 
+                                                self.current_file_stages, 
                                                 True, 
                                                 save_paths, 
                                                 log_file_path, 
                                                 log_folder_path)
-            if status != "Stopped":
-                self.completed_stages += (self.file_cards[file].total_stages - previous_stage)
+            if status == "Completed":
+                self.completed_files += 1
+                self.current_file_progress = 0
+            elif status == "Stopped":
+                self.current_file_progress = 0
         self.update_overall_progress()
 
     def reset_queue(self):
@@ -1583,18 +1589,23 @@ class FileQueueComponent(QWidget):
         return None
 
     def set_total_files(self, total, stages_per_file):
+        self.total_files = total
         self.total_stages = total * stages_per_file
-        self.completed_stages = 0
+        self.current_file_stages = stages_per_file
+        self.completed_files = 0
+        self.current_file_progress = 0
         self.progress_bar.set_total_files(total, stages_per_file)
 
-    def update_overall_progress(self, progress=None):
-        if progress is None:
-            if self.total_stages > 0:
-                progress = min((self.completed_stages / self.total_stages) * 100, 100)
-            else:
-                progress = 0
+    def update_overall_progress(self):
+        if self.total_files > 0:
+            completed_progress = (self.completed_files / self.total_files) * 100
+            current_file_contribution = (self.current_file_progress / self.total_files) * 100
+            overall_progress = completed_progress + current_file_contribution
+            overall_progress = min(overall_progress, 100)  # Ensure progress doesn't exceed 100%
+        else:
+            overall_progress = 0
         
-        self.progress_bar.update_progress(progress)
+        self.progress_bar.update_progress(overall_progress)
 
     def set_delete_enabled(self, enabled):
         for card in self.file_cards.values():
@@ -1606,8 +1617,8 @@ class FileQueueComponent(QWidget):
                 card.set_delete_enabled(enabled)
 
     def reset_progress(self):
-        self.completed_stages = 0
-        self.total_stages = 0
+        self.completed_files = 0
+        self.current_file_progress = 0
         self.progress_bar.reset()
 
     def check_existing_transcriptions(self, files):
@@ -1694,13 +1705,8 @@ class ProgressBarComponent(QWidget):
         layout.addLayout(label_layout)
         layout.addWidget(self.progress_bar)
 
-        self.total_stages = 0
-        self.completed_stages = 0
-
     def set_total_files(self, total, stages_per_file):
-        self.total_stages = total * stages_per_file
-        self.completed_stages = 0
-        self.update_progress(0)
+        pass  # We don't need to do anything here, as we're using percentage-based updates
 
     def update_stage_progress(self, current_stage, total_stages, stage_complete):
         if current_stage > 0 and stage_complete:
@@ -1718,6 +1724,4 @@ class ProgressBarComponent(QWidget):
         self.percentage_label.setText(f"{progress:.1f}%")
 
     def reset(self):
-        self.total_stages = 0
-        self.completed_stages = 0
         self.update_progress(0)

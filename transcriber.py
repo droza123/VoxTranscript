@@ -100,12 +100,11 @@ def run_transcription(config, file, settings_manager, queue, stop_event, temp_fi
     logging.info(f"Starting transcription for file: {file}")
 
     try:
-        log_gpu_memory_usage()
         sleep_preventer.prevent_sleep()
         
-        # Initialize Transcriber
+        # Initializing stage. The initial queue.put command is handled by the main_window.py
         transcriber = Transcriber(config, settings_manager)
-        logging.info("Transcriber instance created")
+        queue.put(('progress', file, "Initializing transcriber", current_stage, total_stages, True))
         
         if stop_event.is_set():
             queue.put(('file_transcribed', file, False, {}, "Stopped", {}, log_file_path, log_folder_path))
@@ -241,7 +240,7 @@ def run_transcription(config, file, settings_manager, queue, stop_event, temp_fi
         log_gpu_memory_usage()
 
 def calculate_total_stages(config, settings_manager):
-    stages = 4  # Base stages: preparation, transcription, alignment, and saving
+    stages = 5  # Base stages: initializing, preparation, transcription, alignment, and saving
     if config.language is None or config.language == "Automatic":
         stages += 1  # Add language detection stage
     if config.diarize:

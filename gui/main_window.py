@@ -13,7 +13,7 @@ from transcription_manager import TranscriptionManager
 from gui.settings import SettingsManager
 from gui.dialogs import IntegratedFileDialog
 from collections import OrderedDict
-from transcriber import TranscriptionConfig
+from transcriber import TranscriptionConfig, calculate_total_stages
 import torch
 
 from config import PYANNOTE_CONFIG_PATH, ALIGN_MODEL_DIR, VAD_MODEL_FP, LANGUAGE_MAP, FASTER_WHISPER_PATH
@@ -459,6 +459,11 @@ class WhisperGUI(QMainWindow):
         # Reset the queue (change Stopped to Queued and reset progress bars)
         self.file_queue_component.reset_queue()
         
+        # Set the total files and stages
+        config = self.create_transcription_config()
+        total_stages = calculate_total_stages(config, self.settings_manager)
+        self.file_queue_component.set_total_files(len(self.file_queue), total_stages)
+        
         # Set the transcription running state
         self.control_panel.set_transcription_running(True)
         
@@ -473,6 +478,12 @@ class WhisperGUI(QMainWindow):
         if self.current_file_index < len(self.file_queue) and not self.is_stopping:
             config = self.create_transcription_config()
             current_file = list(self.file_queue.keys())[self.current_file_index]
+            
+            # Calculate total stages
+            total_stages = calculate_total_stages(config, self.settings_manager)
+            
+            # Update status to "Initializing" immediately for the current file
+            self.file_queue_component.update_file_progress(current_file, "Initializing transcriber", 1, total_stages, False)
             
             # Prepare temporary files
             prepared_audio, clip1, clip2 = self.prepare_temp_files(current_file)
@@ -690,8 +701,8 @@ class WhisperGUI(QMainWindow):
         self.file_queue_component.update_overall_progress(overall_progress)
 
         # Log progress update only when a stage is complete
-        if stage_complete:
-            logging.info(f"Overall progress updated: {overall_progress:.2f}%")
+        # if stage_complete:
+        logging.info(f"Overall progress updated: {overall_progress:.2f}%")
             
     def show_stop_message(self):
         completed_count = sum(1 for file in self.file_queue if self.file_queue_component.get_file_status(file) == "Completed")
