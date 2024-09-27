@@ -391,13 +391,34 @@ class WhisperGUI(QMainWindow):
         self.file_queue_component.open_transcription(file)
 
     def on_stop(self):
-        logging.info("Stop button clicked. Initiating stop process.")
-        self.transcription_manager.stop_transcription_button_pressed()
-        logging.info(f"Current temporary files: {self.current_temp_files}")
-        self.transcription_manager.cleanup(self.current_temp_files)
-        self.set_stopping_state(True)
+        logging.info("Stop button clicked. Initiating immediate stop process.")
         self.is_stopping = True
-        logging.info("Stop process initiated. Waiting for transcription to finish.")
+        self.set_stopping_state(True)
+
+        # Stop the transcription process immediately
+        self.transcription_manager.stop_transcription_button_pressed()
+
+        # Update UI to reflect stopping state
+        self.control_panel.set_transcription_running(False)
+        self.file_queue_component.set_delete_buttons_enabled(True)
+
+        # Reset the current file's progress
+        if self.current_file_index < len(self.file_queue):
+            current_file = list(self.file_queue.keys())[self.current_file_index]
+            self.file_queue_component.reset_file_progress(current_file)
+
+        # Clean up resources (note: we're not passing any arguments to cleanup now)
+        self.transcription_manager.cleanup()
+        self.current_temp_files = []
+
+        # Reset the stopping state
+        self.is_stopping = False
+        self.set_stopping_state(False)
+
+        # Show the stop message
+        self.show_stop_message()
+
+        logging.info("Stop process completed.")
 
     def set_stopping_state(self, is_stopping):
         if is_stopping:
