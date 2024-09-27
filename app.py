@@ -2,6 +2,7 @@ import os
 import sys
 import logging
 from sleep_prevention import sleep_preventer
+import multiprocessing
 
 # Add the current directory and the parent directory to the Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -77,4 +78,5 @@ def main():
     sys.exit(app.exec())
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     main()

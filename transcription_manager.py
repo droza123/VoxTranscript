@@ -1,102 +1,83 @@
 import multiprocessing
 import torch
 import logging
-import time
 from queue import Empty
 from transcriber import run_transcription
 
 class TranscriptionManager:
     def __init__(self):
-        self.pool = None
-        self.manager = None
-        self.output_queue = None
-        self.stop_event = None
-        self.current_task = None
+        self.process = None
+        self.input_queue = multiprocessing.Queue()
+        self.output_queue = multiprocessing.Queue()
+        self.stop_event = multiprocessing.Event()
+        self.temp_files = []
 
     def start_transcription(self, config, file, settings_manager, temp_files):
-        logging.info(f"TranscriptionManager: Starting transcription for file: {file}")
+        if self.process and self.process.is_alive():
+            self.process.terminate()
+            self.process.join()
+
+        self.stop_event.clear()
+        self.temp_files = temp_files
+        self.process = multiprocessing.Process(
+            target=self._run_transcription_process,
+            args=(config, file, settings_manager, self.input_queue, self.output_queue, self.stop_event, self.temp_files)
+        )
+        self.process.start()
+
+    def _run_transcription_process(self, config, file, settings_manager, input_queue, output_queue, stop_event, temp_files):
+        # Ensure CUDA is initialized in this process
+        if torch.cuda.is_available():
+            torch.cuda.init()
+
         try:
-            if self.manager is None:
-                self.manager = multiprocessing.Manager()
-            if self.output_queue is None:
-                self.output_queue = self.manager.Queue()
-            if self.stop_event is None:
-                self.stop_event = self.manager.Event()
-
-            if self.pool is None:
-                logging.info("Creating new process pool")
-                self.pool = multiprocessing.Pool(processes=1, maxtasksperchild=1)
-                logging.info("Process pool created")
-
-            self.stop_event.clear()
-            logging.info("Submitting transcription task to the pool")
-            self.current_task = self.pool.apply_async(
-                run_transcription,
-                (config, file, settings_manager, self.output_queue, self.stop_event, temp_files)
-            )
-            logging.info("Transcription task submitted to the pool")
-
+            run_transcription(config, file, settings_manager, output_queue, stop_event, temp_files)
         except Exception as e:
-            logging.error(f"Error starting transcription: {str(e)}", exc_info=True)
-            self.output_queue.put(('error', f"Error starting transcription: {str(e)}"))
+            output_queue.put(('error', str(e)))
+        finally:
+            # Ensure all CUDA memory is released
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.ipc_collect()
 
+    def cleanup(self, temp_files):
+        logging.info(f"TranscriptionManager: Starting cleanup with temp files: {temp_files}")
+        if self.process and self.process.is_alive():
+            logging.info("TranscriptionManager: Process is still alive. Terminating.")
+            self.process.terminate()
+            self.process.join()
+        from transcriber import cleanup as transcriber_cleanup
+        transcriber_cleanup(*temp_files)
+        logging.info("TranscriptionManager: Cleanup completed.")
+               
     def get_output(self):
         try:
-            if self.output_queue is None:
-                return None
             output = self.output_queue.get_nowait()
-            logging.debug(f"Received output from queue: {output}")
+            if output[0] == 'temp_files':
+                self.temp_files = output[1]
             return output
         except Empty:
             return None
-        except Exception as e:
-            logging.error(f"Error getting output from queue: {str(e)}", exc_info=True)
-            return ('error', f"Error getting output from queue: {str(e)}")
 
     def stop_transcription(self):
-        logging.info("TranscriptionManager: Stopping transcription immediately.")
-        if self.stop_event:
-            self.stop_event.set()
-        
-        if self.pool:
-            logging.info("Terminating the process pool")
-            self.pool.terminate()
-            self.pool.join()
-            self.pool = None
-
-        self.cleanup()
-
+        logging.info("TranscriptionManager: Closing the file process.")
+        self.stop_event.set()
+        if self.process and self.process.is_alive():
+            logging.info("TranscriptionManager: Waiting for process to finish.")
+            self.process.join(timeout=5)
+            if self.process.is_alive():
+                logging.info("TranscriptionManager: Process did not terminate. Forcing termination.")
+                self.process.terminate()
+        logging.info("TranscriptionManager: File process closed.")
+    
     def stop_transcription_button_pressed(self):
-        logging.info("TranscriptionManager: Stop button pressed.")
-        self.stop_transcription()
+        logging.info("TranscriptionManager: Stopping transcription.")
+        self.stop_event.set()
+        if self.process and self.process.is_alive():
+            if self.process.is_alive():
+                logging.info("TranscriptionManager: File process closed.")
+                self.process.terminate()
+        logging.info("TranscriptionManager: Transcription stopped.")
 
     def is_transcription_running(self):
-        is_running = self.pool is not None
-        logging.debug(f"TranscriptionManager: Transcription running status: {is_running}")
-        return is_running
-
-    def cleanup(self):
-        logging.info("TranscriptionManager: Starting cleanup")
-        if self.pool:
-            logging.info("Ensuring process pool is terminated")
-            self.pool.terminate()
-            self.pool.join()
-            self.pool = None
-
-        if self.output_queue:
-            while not self.output_queue.empty():
-                try:
-                    self.output_queue.get_nowait()
-                except:
-                    pass
-            self.output_queue = None
-
-        if self.stop_event:
-            self.stop_event = None
-
-        if self.manager:
-            self.manager.shutdown()
-            self.manager = None
-
-        self.current_task = None
-        logging.info("TranscriptionManager: Cleanup completed.")
+        return self.process and self.process.is_alive()

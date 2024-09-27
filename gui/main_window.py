@@ -4,7 +4,7 @@ import os
 import logging
 from PyQt6.QtWidgets import QMainWindow, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QMessageBox, QFrame, QApplication
 from PyQt6.QtGui import QIcon, QDesktopServices
-from PyQt6.QtCore import Qt, QUrl, QTimer, QMetaObject, Q_ARG, QEventLoop
+from PyQt6.QtCore import Qt, QUrl, QTimer, QMetaObject, Q_ARG
 import importlib
 import gui.components
 importlib.reload(gui.components)
@@ -391,34 +391,13 @@ class WhisperGUI(QMainWindow):
         self.file_queue_component.open_transcription(file)
 
     def on_stop(self):
-        logging.info("Stop button clicked. Initiating immediate stop process.")
-        self.is_stopping = True
-        self.set_stopping_state(True)
-
-        # Stop the transcription process immediately
+        logging.info("Stop button clicked. Initiating stop process.")
         self.transcription_manager.stop_transcription_button_pressed()
-
-        # Update UI to reflect stopping state
-        self.control_panel.set_transcription_running(False)
-        self.file_queue_component.set_delete_buttons_enabled(True)
-
-        # Reset the current file's progress
-        if self.current_file_index < len(self.file_queue):
-            current_file = list(self.file_queue.keys())[self.current_file_index]
-            self.file_queue_component.reset_file_progress(current_file)
-
-        # Clean up resources (note: we're not passing any arguments to cleanup now)
-        self.transcription_manager.cleanup()
-        self.current_temp_files = []
-
-        # Reset the stopping state
-        self.is_stopping = False
-        self.set_stopping_state(False)
-
-        # Show the stop message
-        self.show_stop_message()
-
-        logging.info("Stop process completed.")
+        logging.info(f"Current temporary files: {self.current_temp_files}")
+        self.transcription_manager.cleanup(self.current_temp_files)
+        self.set_stopping_state(True)
+        self.is_stopping = True
+        logging.info("Stop process initiated. Waiting for transcription to finish.")
 
     def set_stopping_state(self, is_stopping):
         if is_stopping:
@@ -439,6 +418,9 @@ class WhisperGUI(QMainWindow):
             # Update the status of the stopped file
             current_file = list(self.file_queue.keys())[self.current_file_index]
             self.file_queue_component.reset_file_progress(current_file)
+            
+            # Show the stop message
+            self.show_stop_message()
 
     def start_transcription(self):
         if not self.file_queue:
@@ -486,45 +468,10 @@ class WhisperGUI(QMainWindow):
         self.control_panel.set_transcription_running(True)
         
         self.current_temp_files = []
-
-        # Update the status of the first file immediately and force a GUI update
-        if self.current_file_index < len(self.file_queue):
-            current_file = list(self.file_queue.keys())[self.current_file_index]
-            self.file_queue_component.update_file_progress(current_file, "Preparing transcriber", 1, total_stages, False)
-            self.force_gui_update()
-
+        self.start_next_transcription()
+        
         # Start the timer when transcription begins
         self.output_timer.start(100)  # Check every 100ms
-
-        # Use QTimer to start the transcription process in the next event loop iteration
-        QTimer.singleShot(0, self.start_transcription_process)
-    
-    def start_transcription_process(self):
-        if self.current_file_index < len(self.file_queue) and not self.is_stopping:
-            config = self.create_transcription_config()
-            current_file = list(self.file_queue.keys())[self.current_file_index]
-            
-            # Calculate total stages
-            total_stages = calculate_total_stages(config, self.settings_manager)
-            
-            # Update status again and force GUI update
-            # self.force_gui_update()
-            
-            # Prepare temporary files
-            prepared_audio, clip1, clip2 = self.prepare_temp_files(current_file)
-            self.current_temp_files = [prepared_audio, clip1, clip2]
-            
-            logging.info(f"Starting transcription for file: {current_file}")
-            logging.info(f"Temporary files: {self.current_temp_files}")
-            
-            self.file_queue_component.update_file_progress(current_file, "Preparing transcriber", 1, total_stages, False)
-            self.transcription_manager.start_transcription(config, current_file, self.settings_manager, self.current_temp_files)
-        else:
-            self.on_transcription_finished()
-    
-    def force_gui_update(self):
-        # Force the GUI to update by processing all pending events
-        QApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 100)
 
                 
     def start_next_transcription(self):
@@ -535,8 +482,8 @@ class WhisperGUI(QMainWindow):
             # Calculate total stages
             total_stages = calculate_total_stages(config, self.settings_manager)
             
-            # Update status to "Preparing" immediately for the current file
-            self.file_queue_component.update_file_progress(current_file, "Preparing transcriber", 1, total_stages, False)
+            # Update status to "Initializing" immediately for the current file
+            self.file_queue_component.update_file_progress(current_file, "Initializing transcriber", 1, total_stages, False)
             
             # Prepare temporary files
             prepared_audio, clip1, clip2 = self.prepare_temp_files(current_file)
@@ -661,32 +608,18 @@ class WhisperGUI(QMainWindow):
         self.is_stopping = False
         
     def check_transcription_output(self):
-        try:
-            output = self.transcription_manager.get_output()
-            if output is not None:
-                logging.info(f"Received output: {output}")
-                message_type, *args = output
-                if message_type == 'progress':
-                    self.update_progress(*args)
-                elif message_type == 'file_transcribed':
-                    self.on_file_transcribed(*args)
-                elif message_type == 'error':
-                    self.on_error(*args)
-            
-            # Check the status of the transcription process
-            if self.transcription_manager.current_task:
-                if self.transcription_manager.current_task.ready():
-                    try:
-                        result = self.transcription_manager.current_task.get(timeout=1)
-                        logging.info(f"Transcription task completed with result: {result}")
-                    except Exception as e:
-                        logging.error(f"Error retrieving transcription task result: {str(e)}", exc_info=True)
-        except Exception as e:
-            logging.error(f"Error in check_transcription_output: {str(e)}", exc_info=True)
+        output = self.transcription_manager.get_output()
+        if output is not None:
+            message_type, *args = output
+            if message_type == 'progress':
+                self.update_progress(*args)
+            elif message_type == 'file_transcribed':
+                self.on_file_transcribed(*args)
+            elif message_type == 'error':
+                self.on_error(*args)
         
         # Check if the process has stopped
-        if self.is_stopping and not self.transcription_manager.is_transcription_running():
-            logging.info("Transcription process has stopped")
+        if self.is_stopping and not self.transcription_manager.process.is_alive():
             self.set_stopping_state(False)
             self.reset_transcription_state()
 
