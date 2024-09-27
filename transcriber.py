@@ -82,131 +82,165 @@ def setup_logging():
     logging.getLogger('').addHandler(console_handler)
 
 def run_transcription(config, file, settings_manager, queue, stop_event, temp_files):
-    setup_logging()
-    log_file_path = get_log_file_path()
-    log_folder_path = os.path.dirname(log_file_path)
-    transcriber = None
-    is_completed = False
-    is_stopped = False
-    current_stage = 0
-    total_stages = calculate_total_stages(config, settings_manager)
-    prepared_audio, clip1, clip2 = temp_files
-    detected_language = None
-
-    if is_completed:
-        logging.info(f"File {file} has already been processed. Skipping.")
-        return
-
-    logging.info(f"Starting transcription for file: {file}")
-
     try:
-        sleep_preventer.prevent_sleep()
-        
-        # Initializing stage. The initial queue.put command is handled by the main_window.py
-        current_stage += 1
-        transcriber = Transcriber(config, settings_manager)
-        queue.put(('progress', file, "Initializing transcriber", current_stage, total_stages, True))
-        
-        # Audio preparation stage
-        current_stage += 1
-        queue.put(('progress', file, "Preparing audio", current_stage, total_stages, False))
+        setup_logging()
+        log_file_path = get_log_file_path()
+        log_folder_path = os.path.dirname(log_file_path)
+        transcriber = None
+        is_completed = False
+        is_stopped = False
+        current_stage = 0
+        total_stages = calculate_total_stages(config, settings_manager)
+        prepared_audio, clip1, clip2 = temp_files
+        detected_language = None
+
+        logging.info(f"Starting run_transcription for file: {file}")
+        logging.info(f"Total stages: {total_stages}")
+        logging.info(f"Config: {config}")
+        logging.info(f"Temp files: {temp_files}")
+
         try:
-            prepared_audio, clip1, clip2 = prepare_audio_for_transcription(file, config, settings_manager)
-            if prepared_audio is None:
-                raise Exception("Failed to prepare audio")
-            queue.put(('progress', file, "Preparing audio", current_stage, total_stages, True))
+            queue.put(('progress', file, "Starting transcription", 0, total_stages, False))
         except Exception as e:
-            logging.error(f"Error in audio preparation for {file}: {str(e)}", exc_info=True)
-            queue.put(('file_transcribed', file, False, {}, "Failed", {}, log_file_path, log_folder_path))
-            return
-        
-        # Language detection stage (if needed)
-        if config.language is None or config.language == "Automatic":
-            current_stage += 1
-            queue.put(('progress', file, "Detecting language", current_stage, total_stages, False))
-            detected_language = transcriber.detect_language(clip1, clip2)
-            queue.put(('progress', file, "Detecting language", current_stage, total_stages, True))
+            logging.error(f"Error putting initial message in queue: {str(e)}", exc_info=True)
+
+        try:
+            logging.info("Preventing sleep")
+            sleep_preventer.prevent_sleep()
             
-            # Delete the clips immediately after use
-            os.remove(clip1)
-            os.remove(clip2)
-        else:
-            detected_language = config.language
-
-        # Transcription stage
-        current_stage += 1
-        queue.put(('progress', file, "Transcribing audio", current_stage, total_stages, False))
-        if transcriber and not is_stopped:
-            results = transcriber.transcribe(prepared_audio, detected_language=detected_language)
-        else:
-            raise Exception("Transcriber is not initialized or process was stopped")
-        queue.put(('progress', file, "Transcribing audio", current_stage, total_stages, True))
-
-        # Alignment stage
-        if not is_stopped:
+            # Initializing stage
             current_stage += 1
-            queue.put(('progress', file, "Refining timestamps", current_stage, total_stages, False))
-            aligned_results = transcriber.align_transcriptions(results)
-            queue.put(('progress', file, "Refining timestamps", current_stage, total_stages, True))
-
-        # Diarization stage (if enabled)
-        if config.diarize and not is_stopped:
+            logging.info(f"Stage {current_stage}/{total_stages}: Initializing transcriber")
+            queue.put(('progress', file, "Initializing transcriber", current_stage, total_stages, True))
+            transcriber = Transcriber(config, settings_manager)
+            logging.info("Transcriber initialized")
+            
+            # Audio preparation stage
             current_stage += 1
-            queue.put(('progress', file, "Detecting speakers", current_stage, total_stages, False))
+            logging.info(f"Stage {current_stage}/{total_stages}: Preparing audio")
+            queue.put(('progress', file, "Preparing audio", current_stage, total_stages, False))
             try:
-                diarized_results = transcriber.diarize_transcriptions(aligned_results)
-                final_results, _, language_info = diarized_results[0]
+                if prepared_audio is None or not os.path.exists(prepared_audio):
+                    logging.info("Preparing audio files")
+                    prepared_audio, clip1, clip2 = prepare_audio_for_transcription(file, config, settings_manager)
+                if prepared_audio is None or not os.path.exists(prepared_audio):
+                    raise Exception("Failed to prepare audio")
+                logging.info("Audio preparation completed")
+                queue.put(('progress', file, "Preparing audio", current_stage, total_stages, True))
             except Exception as e:
-                logging.error(f"Error during speaker detection: {str(e)}")
-                queue.put(('error', f"Error during speaker detection: {str(e)}. Continuing without diarization."))
+                logging.error(f"Error in audio preparation for {file}: {str(e)}", exc_info=True)
+                queue.put(('file_transcribed', file, False, {}, "Failed", {}, log_file_path, log_folder_path))
+                return
+
+            # Language detection stage (if needed)
+            if config.language is None or config.language == "Automatic":
+                current_stage += 1
+                logging.info(f"Stage {current_stage}/{total_stages}: Detecting language")
+                queue.put(('progress', file, "Detecting language", current_stage, total_stages, False))
+                if clip1 and clip2 and os.path.exists(clip1) and os.path.exists(clip2):
+                    detected_language = transcriber.detect_language(clip1, clip2)
+                    logging.info(f"Detected language: {detected_language}")
+                else:
+                    logging.warning("Language detection clips not found, using full audio for detection")
+                    detected_language = transcriber.detect_language(prepared_audio, prepared_audio)
+                queue.put(('progress', file, "Detecting language", current_stage, total_stages, True))
+                
+                # Delete the clips immediately after use
+                for clip in [clip1, clip2]:
+                    if clip and os.path.exists(clip):
+                        try:
+                            os.remove(clip)
+                            logging.info(f"Deleted clip: {clip}")
+                        except Exception as e:
+                            logging.error(f"Error deleting clip {clip}: {str(e)}", exc_info=True)
+            else:
+                detected_language = config.language
+                logging.info(f"Using specified language: {detected_language}")
+
+            # Transcription stage
+            current_stage += 1
+            logging.info(f"Stage {current_stage}/{total_stages}: Transcribing audio")
+            queue.put(('progress', file, "Transcribing audio", current_stage, total_stages, False))
+            if transcriber and not stop_event.is_set():
+                logging.info("Starting transcription")
+                results = transcriber.transcribe(prepared_audio, detected_language=detected_language)
+                logging.info("Transcription completed")
+            else:
+                raise Exception("Transcriber is not initialized or process was stopped")
+            queue.put(('progress', file, "Transcribing audio", current_stage, total_stages, True))
+
+            # Alignment stage
+            if not is_stopped:
+                current_stage += 1
+                queue.put(('progress', file, "Refining timestamps", current_stage, total_stages, False))
+                aligned_results = transcriber.align_transcriptions(results)
+                queue.put(('progress', file, "Refining timestamps", current_stage, total_stages, True))
+
+            # Diarization stage (if enabled)
+            if config.diarize and not is_stopped:
+                current_stage += 1
+                queue.put(('progress', file, "Detecting speakers", current_stage, total_stages, False))
+                try:
+                    diarized_results = transcriber.diarize_transcriptions(aligned_results)
+                    final_results, _, language_info = diarized_results[0]
+                except Exception as e:
+                    logging.error(f"Error during speaker detection: {str(e)}")
+                    queue.put(('error', f"Error during speaker detection: {str(e)}. Continuing without diarization."))
+                    final_results, _, language_info = aligned_results[0]
+                queue.put(('progress', file, "Detecting speakers", current_stage, total_stages, True))
+            else:
                 final_results, _, language_info = aligned_results[0]
-            queue.put(('progress', file, "Detecting speakers", current_stage, total_stages, True))
-        else:
-            final_results, _, language_info = aligned_results[0]
 
-        # Voice recognition stage (if enabled)
-        if config.save_voice_recognition and 'jsonl' in settings_manager.get('output_formats', []) and not is_stopped:
-            current_stage += 1
-            queue.put(('progress', file, "Calculating voice embeddings", current_stage, total_stages, False))
-            try:
-                transcript, speakers = get_transcript_and_speakers(final_results, prepared_audio)
-                queue.put(('progress', file, "Calculating voice embeddings", current_stage, total_stages, True))
-            except Exception as e:
-                logging.error(f"Error during voice embedding calculation: {str(e)}")
-                queue.put(('error', f"Error during voice embedding calculation: {str(e)}. Continuing without voice recognition."))
+            # Voice recognition stage (if enabled)
+            if config.save_voice_recognition and 'jsonl' in settings_manager.get('output_formats', []) and not is_stopped:
+                current_stage += 1
+                queue.put(('progress', file, "Calculating voice embeddings", current_stage, total_stages, False))
+                try:
+                    transcript, speakers = get_transcript_and_speakers(final_results, prepared_audio)
+                    queue.put(('progress', file, "Calculating voice embeddings", current_stage, total_stages, True))
+                except Exception as e:
+                    logging.error(f"Error during voice embedding calculation: {str(e)}")
+                    queue.put(('error', f"Error during voice embedding calculation: {str(e)}. Continuing without voice recognition."))
+                    transcript, speakers = get_transcript_and_speakers(final_results, prepared_audio, skip_embeddings=True)
+            else:
                 transcript, speakers = get_transcript_and_speakers(final_results, prepared_audio, skip_embeddings=True)
-        else:
-            transcript, speakers = get_transcript_and_speakers(final_results, prepared_audio, skip_embeddings=True)
 
-        # Summarization stage (if enabled)
-        if settings_manager.get('auto_summarize', False) and not is_stopped:
+            # Summarization stage (if enabled)
+            if settings_manager.get('auto_summarize', False) and not is_stopped:
+                current_stage += 1
+                queue.put(('progress', file, "Generating summary", current_stage, total_stages, False))
+                summary = generate_summary(transcript, settings_manager)
+                queue.put(('progress', file, "Generating summary", current_stage, total_stages, True))
+            else:
+                summary = None
+
+            # Saving stage
             current_stage += 1
-            queue.put(('progress', file, "Generating summary", current_stage, total_stages, False))
-            summary = generate_summary(transcript, settings_manager)
-            queue.put(('progress', file, "Generating summary", current_stage, total_stages, True))
-        else:
-            summary = None
+            queue.put(('progress', file, "Saving transcription files", current_stage, total_stages, False))
+            file_info = get_file_info(file, prepared_audio)
+            save_paths = save_transcription(file, prepared_audio, final_results, language_info, transcript, speakers, settings_manager, config, summary)
+            queue.put(('progress', file, "Saving transcription files", current_stage, total_stages, True))
 
-        # Saving stage
-        current_stage += 1
-        queue.put(('progress', file, "Saving transcription files", current_stage, total_stages, False))
-        file_info = get_file_info(file, prepared_audio)
-        save_paths = save_transcription(file, prepared_audio, final_results, language_info, transcript, speakers, settings_manager, config, summary)
-        queue.put(('progress', file, "Saving transcription files", current_stage, total_stages, True))
+            # File transcribed successfully
+            logging.info("Transcription process completed successfully")
+            queue.put(('file_transcribed', file, True, save_paths, "Completed", file_info, log_file_path, log_folder_path))
+            is_completed = True
 
-        # File transcribed successfully
-        queue.put(('file_transcribed', file, True, save_paths, "Completed", file_info, log_file_path, log_folder_path))
-        is_completed = True
+        except Exception as e:
+            logging.error(f"Error transcribing {file}: {str(e)}", exc_info=True)
+            queue.put(('error', f"Error transcribing {file}: {str(e)}"))
+            if not stop_event.is_set():
+                queue.put(('file_transcribed', file, False, {}, "Failed", {}, log_file_path, log_folder_path))
+        finally:
+            logging.info("Cleaning up resources")
+            cleanup(prepared_audio, clip1, clip2)
+            force_cuda_memory_release()
+            log_gpu_memory_usage()
+            logging.info("run_transcription finished")
 
     except Exception as e:
-        logging.error(f"Error transcribing {file}: {str(e)}", exc_info=True)
-        queue.put(('error', f"Error transcribing {file}: {str(e)}"))
-        if not stop_event.is_set():
-            queue.put(('file_transcribed', file, False, {}, "Failed", {}, log_file_path, log_folder_path))
-    finally:
-        cleanup(prepared_audio, clip1, clip2)
-        force_cuda_memory_release()
-        log_gpu_memory_usage()
+        logging.critical(f"Critical error in run_transcription: {str(e)}", exc_info=True)
+        queue.put(('error', f"Critical error in run_transcription: {str(e)}"))
 
 def calculate_total_stages(config, settings_manager):
     stages = 5  # Base stages: initializing, preparation, transcription, alignment, and saving
@@ -230,23 +264,24 @@ async def check_ollama(settings_manager):
         return False
         
 def prepare_audio_for_transcription(file, config, settings_manager):
-    with silent_subprocess():
-        logging.info(f"Preparing audio for transcription: {file}")
-        
-        output_dir = get_output_directory(file, settings_manager)
-        logging.info(f"Using output directory for prepared audio: {output_dir}")
-        
-        try:
-            prepared_audio = prepare_audio(file, output_dir)
-            logging.info(f"Successfully prepared audio: {prepared_audio}")
+    logging.info(f"Preparing audio for transcription: {file}")
+    
+    output_dir = settings_manager.get_output_folder(file)
+    logging.info(f"Using output directory for prepared audio: {output_dir}")
+    
+    try:
+        prepared_audio = prepare_audio(file, output_dir)
+        logging.info(f"Successfully prepared audio: {prepared_audio}")
 
-            clip1 = prepare_language_detection_clip(prepared_audio, start_ratio=1/3)
-            clip2 = prepare_language_detection_clip(prepared_audio, start_ratio=2/3)
+        clip1 = prepare_language_detection_clip(prepared_audio, start_ratio=1/3)
+        clip2 = prepare_language_detection_clip(prepared_audio, start_ratio=2/3)
 
-            return prepared_audio, clip1, clip2
-        except Exception as e:
-            logging.error(f"Error preparing audio for transcription: {str(e)}", exc_info=True)
-            return None, None, None
+        logging.info(f"Created language detection clips: {clip1}, {clip2}")
+
+        return prepared_audio, clip1, clip2
+    except Exception as e:
+        logging.error(f"Error preparing audio for transcription: {str(e)}", exc_info=True)
+        return None, None, None
 
 def get_output_directory(file, settings_manager):
     if settings_manager.get('use_custom_output_folder', False):
@@ -800,7 +835,8 @@ def process_transcription_results(result, transcript, speakers):
 
         
 def prepare_language_detection_clip(prepared_audio, start_ratio):
-    with silent_subprocess():
+    logging.info(f"Preparing language detection clip from {prepared_audio} with start ratio {start_ratio}")
+    try:
         audio, sr = torchaudio.load(prepared_audio)
         duration = audio.shape[1] / sr
         start_time = int(duration * start_ratio)
@@ -811,7 +847,11 @@ def prepare_language_detection_clip(prepared_audio, start_ratio):
         clip_path = f"{os.path.splitext(prepared_audio)[0]}_clip_{start_ratio:.2f}.wav"
         torchaudio.save(clip_path, clip, sr)
         
+        logging.info(f"Created language detection clip: {clip_path}")
         return clip_path
+    except Exception as e:
+        logging.error(f"Error creating language detection clip: {str(e)}", exc_info=True)
+        return None
 
 class CustomJSONEncoder(json.JSONEncoder):
     def default(self, obj):

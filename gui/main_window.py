@@ -608,18 +608,32 @@ class WhisperGUI(QMainWindow):
         self.is_stopping = False
         
     def check_transcription_output(self):
-        output = self.transcription_manager.get_output()
-        if output is not None:
-            message_type, *args = output
-            if message_type == 'progress':
-                self.update_progress(*args)
-            elif message_type == 'file_transcribed':
-                self.on_file_transcribed(*args)
-            elif message_type == 'error':
-                self.on_error(*args)
+        try:
+            output = self.transcription_manager.get_output()
+            if output is not None:
+                logging.info(f"Received output: {output}")
+                message_type, *args = output
+                if message_type == 'progress':
+                    self.update_progress(*args)
+                elif message_type == 'file_transcribed':
+                    self.on_file_transcribed(*args)
+                elif message_type == 'error':
+                    self.on_error(*args)
+            
+            # Check the status of the transcription process
+            if self.transcription_manager.current_task:
+                if self.transcription_manager.current_task.ready():
+                    try:
+                        result = self.transcription_manager.current_task.get(timeout=1)
+                        logging.info(f"Transcription task completed with result: {result}")
+                    except Exception as e:
+                        logging.error(f"Error retrieving transcription task result: {str(e)}", exc_info=True)
+        except Exception as e:
+            logging.error(f"Error in check_transcription_output: {str(e)}", exc_info=True)
         
         # Check if the process has stopped
-        if self.is_stopping and not self.transcription_manager.process.is_alive():
+        if self.is_stopping and not self.transcription_manager.is_transcription_running():
+            logging.info("Transcription process has stopped")
             self.set_stopping_state(False)
             self.reset_transcription_state()
 
