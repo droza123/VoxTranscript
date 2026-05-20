@@ -1,5 +1,5 @@
 #define MyAppName "VoxTranscript"
-#define MyAppVersion "1.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "Devin Roza"
 #define MyAppExeName "VoxTranscript.exe"
 
