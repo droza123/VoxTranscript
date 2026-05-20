@@ -8,6 +8,7 @@ AppId={{6111cdf0-523b-4410-8716-0a2f8b195063}}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
+SetupArchitecture=x64
 DefaultDirName={localappdata}\{#MyAppName}
 DisableProgramGroupPage=yes
 DisableDirPage=no
