@@ -83,6 +83,16 @@ def setup_logging():
 
 def run_transcription(config, file, settings_manager, queue, stop_event, temp_files):
     setup_logging()
+    # Capture native crashes (ctranslate2/torch segfaults etc.) that bypass Python's
+    # exception machinery and would otherwise leave the user with a silent dead subprocess.
+    import faulthandler
+    _fault_log_path = os.path.join(os.path.dirname(get_log_file_path()), 'faulthandler.log')
+    try:
+        _fault_log = open(_fault_log_path, 'w', buffering=1)
+        faulthandler.enable(_fault_log, all_threads=True)
+        logging.info(f"faulthandler armed, writing to {_fault_log_path}")
+    except Exception as _e:
+        logging.warning(f"Failed to arm faulthandler: {_e}")
     log_file_path = get_log_file_path()
     log_folder_path = os.path.dirname(log_file_path)
     transcriber = None
@@ -971,7 +981,6 @@ class Transcriber:
                             },
                             task=self.config.task,
                             threads=self.faster_whisper_threads,
-                            vad_model_fp=self.config.vad_model_fp,
                         )
                     else:
                         logging.info(f"Local model not found. Attempting to download: {self.config.whisper_model_name}")
@@ -989,7 +998,6 @@ class Transcriber:
                             },
                             task=self.config.task,
                             threads=self.faster_whisper_threads,
-                            vad_model_fp=self.config.vad_model_fp,
                         )
                 return self.model
 

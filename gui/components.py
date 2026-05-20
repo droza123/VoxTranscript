@@ -256,8 +256,15 @@ class ControlPanel(QWidget):
 
         # Set the content layout for the CollapsibleBox and refresh Ollama models
         advanced_box.setContentLayout(content_layout)
-        self.refresh_ollama_models()
-        
+        # Only probe Ollama if auto-summarize is actually enabled. Otherwise we
+        # block the UI startup waiting for an Ollama daemon the user doesn't want.
+        if self.settings_manager.get('auto_summarize', False):
+            self.refresh_ollama_models()
+        else:
+            self.ollama_model_combo.clear()
+            self.ollama_model_combo.addItem("(enable auto-summarize to load models)")
+            self.ollama_model_combo.setEnabled(False)
+
         return advanced_box
 
     def create_ollama_model_selection(self):

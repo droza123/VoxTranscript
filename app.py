@@ -1,4 +1,14 @@
 import os
+# Safety belts for known DLL/runtime conflicts. Cheap to set, no perf impact:
+#   KMP_DUPLICATE_LIB_OK lets multiple OpenMP runtimes coexist if torch and
+#   ctranslate2 ever drift back to bundling different versions.
+#   ONEAPI_DEVICE_SELECTOR=cpu stops oneAPI from probing Intel iGPUs, which
+#   has crashed at least one user's machine during ctranslate2 init.
+# Set BEFORE importing torch/whisperx/ctranslate2 so the env is inherited by
+# multiprocessing.spawn'd subprocesses too.
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+os.environ.setdefault("ONEAPI_DEVICE_SELECTOR", "cpu")
+
 import sys
 import logging
 from sleep_prevention import sleep_preventer
