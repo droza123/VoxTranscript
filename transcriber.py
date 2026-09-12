@@ -940,6 +940,13 @@ class TranscriptionConfig:
         self.pyannote_config_path = pyannote_config_path
         self.model_path = model_path
 
+def default_cpu_threads():
+    """Thread count for CPU-only inference: all logical cores but one, so the
+    GUI process and the OS keep a core to themselves. Never below 1."""
+    count = os.cpu_count() or 1
+    return max(1, count - 1)
+
+
 class Transcriber:
     def __init__(self, config: TranscriptionConfig, settings_manager):
         self.config = config
@@ -948,14 +955,23 @@ class Transcriber:
         self.ffmpeg_path = get_ffmpeg()
         logging.info(f"Initialized Transcriber with FFMPEG path: {self.ffmpeg_path}")
         self.device = self.get_device()
-        self.faster_whisper_threads = 4
         self.model = None
         
         self.model_path = resource_path("models")
         self.user_chosen_language = None
         if self.config.threads > 0:
+            # Explicit override from the caller.
             torch.set_num_threads(self.config.threads)
             self.faster_whisper_threads = self.config.threads
+        elif self.device.type == "cpu":
+            # CPU-only machine (e.g. no NVIDIA GPU): faster-whisper/CTranslate2 does
+            # the heavy lifting here, so size its thread pool to the machine instead
+            # of the old fixed default of 4, which left most cores idle.
+            self.faster_whisper_threads = default_cpu_threads()
+        else:
+            # On CUDA the CPU threads only handle housekeeping; keep the old default.
+            self.faster_whisper_threads = 4
+        logging.info(f"Transcriber device: {self.device}, faster-whisper CPU threads: {self.faster_whisper_threads}")
         self.min_transcription_length = 100  # Minimum length for reliable language detection
         self.valid_language_codes = set([
             'en', 'zh', 'de', 'es', 'ru', 'ko', 'fr', 'ja', 'pt', 'tr', 'pl', 'ca', 'nl', 'ar', 'sv', 'it', 'id', 'hi', 
