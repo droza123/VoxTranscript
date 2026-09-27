@@ -6,6 +6,7 @@ import yaml
 import numpy as np
 import pandas as pd
 import torch
+import torch_compat  # noqa: F401  (allowlist pyannote checkpoint classes for torch>=2.6)
 from pyannote.audio import Pipeline
 from utils import resource_path, get_app_file_path
 from whisperx.audio import SAMPLE_RATE, load_audio

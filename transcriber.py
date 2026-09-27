@@ -22,6 +22,7 @@ import wave
 import requests
 import shutil
 import torch
+import torch_compat  # noqa: F401  (allowlist pyannote checkpoint classes for torch>=2.6)
 import torchaudio
 import asyncio
 import numpy as np
