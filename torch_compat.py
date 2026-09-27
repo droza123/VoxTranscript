@@ -43,7 +43,9 @@ def _allow_pyannote_checkpoint_globals():
         dict,
         int,
     ])
-    logging.info("Allowlisted pyannote checkpoint classes for torch.load(weights_only=True)")
+    # Module logger, not logging.info(): a root-level logging call with no handlers
+    # yet would run basicConfig() and turn transcriber.setup_logging() into a no-op.
+    logging.getLogger(__name__).info("Allowlisted pyannote checkpoint classes for torch.load(weights_only=True)")
 
 
 _allow_pyannote_checkpoint_globals()

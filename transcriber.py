@@ -74,7 +74,8 @@ def setup_logging():
         filename=log_file,
         level=logging.DEBUG,
         format='%(asctime)s - %(levelname)s - %(message)s',
-        filemode='a'
+        filemode='a',
+        force=True,  # replace any handler an import already put on the root logger
     )
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
