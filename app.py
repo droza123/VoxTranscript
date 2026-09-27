@@ -9,6 +9,14 @@ import os
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 os.environ.setdefault("ONEAPI_DEVICE_SELECTOR", "cpu")
 
+# Load ctranslate2 before anything imports PyQt6. PyQt6 ships an old MSVC C++
+# runtime (msvcp140.dll 14.26); if Qt loads it first, ctranslate2 (built with a
+# newer MSVC) binds to that copy and crashes with an access violation while
+# creating the Whisper model. Loaded first, ctranslate2 pulls in the system's
+# current runtime, which Qt then shares without trouble. This file's top level
+# also runs in each spawned transcription process, so the order holds there too.
+import ctranslate2  # noqa: F401
+
 import sys
 import logging
 from sleep_prevention import sleep_preventer
