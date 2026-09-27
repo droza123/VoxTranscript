@@ -1119,10 +1119,14 @@ class Transcriber:
                 if self.config.no_align:
                     return transcriptions
 
-                align_language = self.config.language or "en"
                 aligned_results = []
 
                 for result, prepared_audio, language_info in transcriptions:
+                    # Align with the language the audio was actually transcribed in.
+                    # With "Automatic", config.language is None, so falling back to it
+                    # alone would align e.g. Italian text with the English model.
+                    align_language = language_info.get('transcription') or self.config.language or "en"
+                    logging.info(f"Loading alignment model for language: {align_language}")
                     input_audio = decode_audio(prepared_audio)
 
                     try:

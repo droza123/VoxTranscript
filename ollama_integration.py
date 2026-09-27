@@ -16,6 +16,7 @@ class OllamaIntegration:
         self.tags_endpoint = f"{self.base_url}/api/tags"
         self.set_model(model)
         self.default_context_window = 4096
+        self.output_token_budget = 4096
         self.tokenizer = self.init_tokenizer()
 
     def set_model(self, model):
@@ -169,7 +170,11 @@ class OllamaIntegration:
         self.logger.info(f"User tokens: {user_tokens}")
         self.logger.info(f"Total tokens: {total_tokens}")
 
-        context_window = max(self.default_context_window, total_tokens + 1000)  # Add buffer
+        # Room for the reply on top of the prompt. The prompt is counted with the Llama
+        # tokenizer, which won't match every Ollama model exactly, and models that think
+        # before answering spend part of this budget on reasoning tokens. 1000 tokens was
+        # too tight: gemma4:12b summaries came back cut off mid-sentence.
+        context_window = max(self.default_context_window, total_tokens + self.output_token_budget)
 
         self.logger.info(f"Using context window: {context_window}")
 
@@ -191,6 +196,12 @@ class OllamaIntegration:
             )
             response.raise_for_status()
             result = response.json()
+            self.logger.info(
+                f"Summary generated: done_reason={result.get('done_reason')}, "
+                f"prompt_eval_count={result.get('prompt_eval_count')}, eval_count={result.get('eval_count')}"
+            )
+            if result.get('done_reason') == 'length':
+                self.logger.warning("Summary hit the context limit and is probably truncated.")
             return result['response']
         except Exception as e:
             self.logger.error(f"Error generating summary: {str(e)}")
