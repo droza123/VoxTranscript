@@ -12,10 +12,6 @@ from PyInstaller.utils.hooks import collect_submodules, collect_data_files, copy
 
 block_cipher = None
 
-# site-packages of the environment running PyInstaller. Don't hard-code a path here:
-# a stale one makes PyInstaller bundle packages from some other (older) venv.
-venv_site_packages = os.path.join(sys.prefix, 'Lib', 'site-packages')
-
 # Get the path to the speechbrain package
 speechbrain_path = os.path.dirname(speechbrain.__file__)
 
@@ -45,7 +41,9 @@ ffmpeg_files = [(os.path.join(ffmpeg_dir, file), 'ffmpeg') for file in os.listdi
 
 a = Analysis(
     ['app.py'],
-    pathex=[venv_site_packages],
+    # No pathex: PyInstaller already searches the environment it runs from. A
+    # hard-coded site-packages here once made builds bundle a stale venv.
+    pathex=[],
     binaries=ffmpeg_files,  # Include ffmpeg binaries here
     datas=[
         ('gui', 'gui'),
