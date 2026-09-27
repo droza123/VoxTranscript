@@ -12,15 +12,12 @@ from PyInstaller.utils.hooks import collect_submodules, collect_data_files, copy
 
 block_cipher = None
 
-# Specify the path to your virtual environment's site-packages
-venv_site_packages = r'C:\Users\frdev\Downloads\VoxTranscript\.venv\lib\site-packages'
-
-# Ensure the virtual environment path is in sys.path
-if venv_site_packages not in sys.path:
-    sys.path.insert(0, venv_site_packages)
+# site-packages of the environment running PyInstaller. Don't hard-code a path here:
+# a stale one makes PyInstaller bundle packages from some other (older) venv.
+venv_site_packages = os.path.join(sys.prefix, 'Lib', 'site-packages')
 
 # Get the path to the speechbrain package
-speechbrain_path = os.path.join(venv_site_packages, 'speechbrain')
+speechbrain_path = os.path.dirname(speechbrain.__file__)
 
 # Collect all submodules of pyannote
 pyannote_hidden_imports = collect_submodules('pyannote')
