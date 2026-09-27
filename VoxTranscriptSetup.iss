@@ -1,5 +1,5 @@
 #define MyAppName "VoxTranscript"
-#define MyAppVersion "1.0.1"
+#define MyAppVersion "1.1.0"
 #define MyAppPublisher "Devin Roza"
 #define MyAppExeName "VoxTranscript.exe"
 ; Profile of the app in dist\ (written by app.spec), so the installer name always matches it.
