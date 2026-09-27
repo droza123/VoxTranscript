@@ -22,22 +22,29 @@ def get_ffmpeg_windows():
     if getattr(sys, 'frozen', False):
         # Running as compiled executable
         base_path = sys._MEIPASS
-        ffmpeg_path = os.path.join(base_path, "ffmpeg", "ffmpeg.exe")
+        ffmpeg_dir = os.path.join(base_path, "ffmpeg")
+        ffmpeg_path = os.path.join(ffmpeg_dir, "ffmpeg.exe")
     else:
         # Running in development mode
         ffmpeg_dir = resource_path("ffmpeg")
         ffmpeg_path = os.path.join(ffmpeg_dir, "ffmpeg.exe")
     
-    if not os.path.exists(ffmpeg_path):
+    # ffprobe.exe must sit next to ffmpeg.exe: audio.prepare_audio() calls ffmpeg.probe(),
+    # which runs "ffprobe" from PATH (get_ffmpeg_windows adds this folder to PATH).
+    ffprobe_path = os.path.join(os.path.dirname(ffmpeg_path), "ffprobe.exe")
+    if not os.path.exists(ffmpeg_path) or not os.path.exists(ffprobe_path):
         url = 'https://github.com/GyanD/codexffmpeg/releases/download/6.0/ffmpeg-6.0-essentials_build.zip'
         ffmpeg_zip = os.path.join(ffmpeg_dir, "ffmpeg.zip")
         ffmpeg_extract_dir = os.path.join(ffmpeg_dir, "ffmpeg_extract")
-        ffmpeg_exe = os.path.join(ffmpeg_extract_dir, "ffmpeg-6.0-essentials_build", "bin", "ffmpeg.exe")
+        extracted_bin = os.path.join(ffmpeg_extract_dir, "ffmpeg-6.0-essentials_build", "bin")
         
         os.makedirs(ffmpeg_dir, exist_ok=True)
         download_with_progress_bar(url, ffmpeg_zip)
         shutil.unpack_archive(ffmpeg_zip, ffmpeg_extract_dir, "zip")
-        shutil.move(ffmpeg_exe, ffmpeg_path)
+        for exe_name, dest in (("ffmpeg.exe", ffmpeg_path), ("ffprobe.exe", ffprobe_path)):
+            if os.path.exists(dest):
+                os.remove(dest)
+            shutil.move(os.path.join(extracted_bin, exe_name), dest)
         shutil.rmtree(ffmpeg_extract_dir)
         os.remove(ffmpeg_zip)
     return ffmpeg_path
