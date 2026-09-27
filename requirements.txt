@@ -17,12 +17,10 @@ colorama==0.4.6
 coloredlogs==15.0.1
 colorlog==6.8.2
 contourpy==1.2.1
-cupy-cuda11x==13.3.0
 cycler==0.12.1
 decorator==5.1.1
 docopt==0.6.2
 einops==0.8.0
-fastrlock==0.8.2
 ffmpeg-python==0.2.0
 filelock==3.15.4
 flatbuffers==24.3.25
@@ -120,12 +118,12 @@ tensorboardX==2.6.2.2
 threadpoolctl==3.5.0
 tiktoken==0.7.0
 tokenizers==0.15.2
-torch @ https://download.pytorch.org/whl/cu118/torch-2.2.2%2Bcu118-cp310-cp310-win_amd64.whl
+torch @ https://download.pytorch.org/whl/cu128/torch-2.7.1%2Bcu128-cp310-cp310-win_amd64.whl
 torch-audiomentations==0.11.1
 torch-pitch-shift==1.2.4
-torchaudio @ https://download.pytorch.org/whl/cu118/torchaudio-2.2.2%2Bcu118-cp310-cp310-win_amd64.whl
+torchaudio @ https://download.pytorch.org/whl/cu128/torchaudio-2.7.1%2Bcu128-cp310-cp310-win_amd64.whl
 torchmetrics==1.4.0.post0
-torchvision @ https://download.pytorch.org/whl/cu118/torchvision-0.17.2%2Bcu118-cp310-cp310-win_amd64.whl
+torchvision @ https://download.pytorch.org/whl/cu128/torchvision-0.22.1%2Bcu128-cp310-cp310-win_amd64.whl
 tqdm==4.66.4
 transformers==4.39.3
 typer==0.12.3
