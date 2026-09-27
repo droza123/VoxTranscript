@@ -2,6 +2,12 @@
 #define MyAppVersion "1.0.1"
 #define MyAppPublisher "Devin Roza"
 #define MyAppExeName "VoxTranscript.exe"
+; Profile of the app in dist\ (written by app.spec), so the installer name always matches it.
+#if FileExists(AddBackslash(SourcePath) + "build_profile.iss")
+  #include "build_profile.iss"
+#else
+  #define Profile "legion"
+#endif
 
 [Setup]
 AppId={{6111cdf0-523b-4410-8716-0a2f8b195063}}
@@ -12,7 +18,7 @@ SetupArchitecture=x64
 DefaultDirName={localappdata}\{#MyAppName}
 DisableProgramGroupPage=yes
 DisableDirPage=no
-OutputBaseFilename=VoxTranscript_Setup
+OutputBaseFilename=VoxTranscript_Setup_{#Profile}
 Compression=none
 SolidCompression=no
 WizardStyle=modern

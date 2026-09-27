@@ -46,6 +46,7 @@ from utils import force_cuda_memory_release, log_gpu_memory_usage
 from audio import prepare_audio
 from sleep_prevention import sleep_preventer
 from ollama_integration import OllamaIntegration
+from prompt_profiles import get_profile
 from subprocess_context import silent_subprocess
 from load_resources import get_ffmpeg
 from audio import decode_audio
@@ -462,12 +463,14 @@ def generate_summary(transcript, settings_manager):
         # Create a clean, readable version of the transcript
         clean_transcript = create_clean_transcript(transcript)
         
-        # Check if "Nuestro Padre" is mentioned
-        includes_nuestro_padre = check_for_nuestro_padre(clean_transcript)
+        # Add the organisation-specific context (e.g. who "Nuestro Padre" / "la Madre" refers to)
+        # only when the transcript actually uses one of the profile's trigger phrases.
+        profile = get_profile()
+        includes_context = check_for_context_trigger(clean_transcript, profile["context_triggers"])
         
         async def generate():
             try:
-                return await ollama.generate_summary(clean_transcript, includes_nuestro_padre)
+                return await ollama.generate_summary(clean_transcript, includes_context, profile)
             except Exception as e:
                 logging.error(f"Error generating summary: {str(e)}")
                 return None
@@ -514,9 +517,9 @@ def create_clean_transcript(transcript):
     
     return clean_text.strip()
 
-def check_for_nuestro_padre(clean_transcript):
+def check_for_context_trigger(clean_transcript, triggers):
     lower_transcript = clean_transcript.lower()
-    return "nuestro padre" in lower_transcript     
+    return any(trigger in lower_transcript for trigger in triggers)     
 
 def get_file_info(original_file, prepared_audio):
     original_file_size = os.path.getsize(original_file)  # Use original file for size

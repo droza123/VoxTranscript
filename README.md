@@ -31,12 +31,21 @@ The bundled installer ships with the models below pre-installed. For a developme
 
 ### Building the installer
 
+The summary prompts are built in per organisation (see `prompt_profiles.py`). Pick one with `VOXTRANSCRIPT_PROFILE`; it defaults to `legion`:
+
 ```powershell
+# Legionaries of Christ (Spanish prompts)
+$env:VOXTRANSCRIPT_PROFILE="legion"
+pyinstaller app.spec --clean
+& "C:\Program Files\Inno Setup 7\ISCC.exe" VoxTranscriptSetup.iss
+
+# Oblates (Italian prompts, Madre Maria Elisabetta Patrizi)
+$env:VOXTRANSCRIPT_PROFILE="oblates"
 pyinstaller app.spec --clean
 & "C:\Program Files\Inno Setup 7\ISCC.exe" VoxTranscriptSetup.iss
 ```
 
-Output lands in `Output\` as a `VoxTranscript_Setup.exe` plus one or more `.bin` slice files.
+PyInstaller prints `*** Building VoxTranscript with the '<profile>' summary prompts ***` near the start. Output lands in `Output\` as `VoxTranscript_Setup_<profile>.exe` plus one or more `.bin` slice files; the name comes from the profile the app in `dist\` was built with. When running from source, `$env:VOXTRANSCRIPT_PROFILE` selects the prompts too.
 
 ## Acknowledgements
 
