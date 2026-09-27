@@ -3,6 +3,8 @@ import os
 import logging
 import subprocess
 import asyncio
+from version import __version__
+from prompt_profiles import PROFILES, get_profile_name
 from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QPushButton, QLabel, QComboBox, QCheckBox,
     QVBoxLayout, QProgressBar, QSpacerItem, QSizePolicy, QGroupBox,
@@ -94,6 +96,12 @@ class ControlPanel(QWidget):
 
         button_layout.addWidget(self.start_button)
         button_layout.addWidget(self.clear_queue_stop_button)
+
+        profile_name = PROFILES[get_profile_name()]["display_name"]
+        version_label = QLabel(f"Version {__version__} · {profile_name}")
+        version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        version_label.setStyleSheet("color: gray; font-size: 11px;")
+        button_layout.addWidget(version_label)
 
         self.start_button.setEnabled(False)
         self.clear_queue_stop_button.setEnabled(False)

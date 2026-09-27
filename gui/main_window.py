@@ -18,13 +18,14 @@ import torch
 
 from config import PYANNOTE_CONFIG_PATH, ALIGN_MODEL_DIR, VAD_MODEL_FP, LANGUAGE_MAP, FASTER_WHISPER_PATH
 from utils import resource_path
+from version import __version__
 
 class WhisperGUI(QMainWindow):
     def __init__(self):
         super().__init__()
         logging.info("Initializing WhisperGUI")
         
-        self.setWindowTitle("VoxTranscipt")
+        self.setWindowTitle(f"VoxTranscript {__version__}")
         self.setGeometry(100, 100, 1200, 700)
         
         # Set the window icon

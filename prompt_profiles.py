@@ -20,6 +20,7 @@ DEFAULT_PROFILE = "legion"
 PROFILES = {
     # Legionaries of Christ historical archive (Spanish prompts).
     "legion": {
+        "display_name": "Legion",
         "system_prompt": (
             "Eres un asistente de IA especializado en crear resúmenes objetivos de transcripciones para el archivo histórico de la Legión de Cristo. "
             "Sigue estas instrucciones para estructurar el resumen:\n"
@@ -56,6 +57,7 @@ PROFILES = {
     # Oblates: archive of Mother Foundress Maria Elisabetta Patrizi (Italian prompts).
     # Text recovered from the build installed for Sr. Mary.
     "oblates": {
+        "display_name": "Oblates",
         "system_prompt": (
             "Sei un assistente di IA specializzato nella creazione di sintesi oggettive di trascrizioni per l’archivio storico e spirituale della Madre Fondatrice Maria Elisabetta Patrizi. Segui queste istruzioni per strutturare il riassunto:\n"
             "1. Iniziare identificando il genere della trascrizione (ad esempio, intervista, conferenza, omelia, riflessione, meditazione, ecc.) e l'argomento o gli argomenti principali.\n"

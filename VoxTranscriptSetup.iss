@@ -1,12 +1,12 @@
 #define MyAppName "VoxTranscript"
-#define MyAppVersion "1.1.0"
 #define MyAppPublisher "Devin Roza"
 #define MyAppExeName "VoxTranscript.exe"
-; Profile of the app in dist\ (written by app.spec), so the installer name always matches it.
+; Profile and MyAppVersion of the app in dist\, written by app.spec (version from version.py),
+; so the installer's name and version always match what was built.
 #if FileExists(AddBackslash(SourcePath) + "build_profile.iss")
   #include "build_profile.iss"
 #else
-  #define Profile "legion"
+  #error Run "pyinstaller app.spec --clean" first; it writes build_profile.iss.
 #endif
 
 [Setup]
